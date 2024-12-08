@@ -230,6 +230,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	ride := &Ride{}
+	yetSentRideStatuses := []RideStatus{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
 
@@ -243,20 +244,41 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-
-	if err := tx.GetContext(ctx, &yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			status, err = getLatestRideStatus(ctx, tx, ride.ID)
-			if err != nil {
+Loop:
+	for {
+		if err := tx.GetContext(ctx, &yetSentRideStatuses, `SELECT * FROM ride_statuses WHERE ride_id = ? ORDER BY created_at`, ride.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				status, err = getLatestRideStatus(ctx, tx, ride.ID)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
+			} else {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
 		} else {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			previousStatus := ""
+			previousStatuses := map[string]string{
+				"MATCHING":  "",
+				"ENROUTE":   "MATCHING",
+				"PICKUP":    "ENROUTE",
+				"CARRYING":  "PICKUP",
+				"ARRIVED":   "CARRYING",
+				"COMPLETED": "ARRIVED",
+			}
+			for _, rideStatus := range yetSentRideStatuses {
+				if rideStatus.ChairSentAt == nil {
+					if previousStatuses[rideStatus.Status] == previousStatus {
+						yetSentRideStatus = rideStatus
+						break Loop
+					} else {
+						continue Loop
+					}
+				}
+				previousStatus = rideStatus.Status
+			}
 		}
-	} else {
-		status = yetSentRideStatus.Status
 	}
 
 	user := &User{}
