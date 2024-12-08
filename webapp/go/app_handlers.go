@@ -564,7 +564,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 
 	_, err = tx.ExecContext(
 		ctx,
-		`UPDATE ride_statues SET id = ?, status = ? WHERE ride_id = ?`,
+		`UPDATE ride_statuses SET id = ?, status = ? WHERE ride_id = ?`,
 		ulid.Make().String(), "COMPLETED", rideID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
