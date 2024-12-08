@@ -51,11 +51,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
             SELECT r.chair_id
             FROM rides r
             JOIN ride_statuses rs ON r.id = rs.ride_id
-						WHERE chair_id IS NOT NULL
-						AND rs.chair_sent_at IS NOT NULL
-						AND rs.app_sent_at IS NOT NULL
-						AND rs.status <> 'COMPLETED'
-            GROUP BY r.chair_id, rs.ride_id
+						WHERE rs.status <> 'COMPLETED'
         )
 	`
 	if err := db.SelectContext(ctx, &chairsWithLocations, query); err != nil {
