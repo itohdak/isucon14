@@ -72,7 +72,7 @@ func setup() http.Handler {
 	db = _db
 
 	mux := chi.NewRouter()
-	mux.Use(middleware.Logger)
+	/* mux.Use(middleware.Logger) */
 	mux.Use(middleware.Recoverer)
 	mux.HandleFunc("POST /api/initialize", postInitialize)
 
@@ -81,6 +81,7 @@ func setup() http.Handler {
 		mux.HandleFunc("POST /api/app/users", appPostUsers)
 
 		authedMux := mux.With(appAuthMiddleware)
+		authedMux.Use(middleware.Logger)
 		authedMux.HandleFunc("POST /api/app/payment-methods", appPostPaymentMethods)
 		authedMux.HandleFunc("GET /api/app/rides", appGetRides)
 		authedMux.HandleFunc("POST /api/app/rides", appPostRides)
@@ -95,6 +96,7 @@ func setup() http.Handler {
 		mux.HandleFunc("POST /api/owner/owners", ownerPostOwners)
 
 		authedMux := mux.With(ownerAuthMiddleware)
+		authedMux.Use(middleware.Logger)
 		authedMux.HandleFunc("GET /api/owner/sales", ownerGetSales)
 		authedMux.HandleFunc("GET /api/owner/chairs", ownerGetChairs)
 	}
@@ -104,6 +106,7 @@ func setup() http.Handler {
 		mux.HandleFunc("POST /api/chair/chairs", chairPostChairs)
 
 		authedMux := mux.With(chairAuthMiddleware)
+		authedMux.Use(middleware.Logger)
 		authedMux.HandleFunc("POST /api/chair/activity", chairPostActivity)
 		authedMux.HandleFunc("POST /api/chair/coordinate", chairPostCoordinate)
 		authedMux.HandleFunc("GET /api/chair/notification", chairGetNotification)
