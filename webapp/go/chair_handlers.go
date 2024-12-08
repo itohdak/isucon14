@@ -250,7 +250,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		JOIN ride_statuses rs ON r.id = rs.ride_id
 		WHERE r.chair_id = ?
 		AND rs.chair_sent_at IS NOT NULL
-		GROUP BY r.chair_id, r.id, r.user_id, r.pickup_latitude, r.pickup_longitude, r.destination_latitude, r.destination_longitude, r.evaluation, r.created_at, r.updated_at
+		GROUP BY r.chair_id, r.id, r.user_id, r.pickup_latitude, r.pickup_longitude, r.destination_latitude, r.destination_longitude, r.evaluation, r.created_at, r.updated_at, rs.created_at
 		HAVING COUNT(r.id) < 6
 		ORDER BY rs.created_at
 		LIMIT 1
