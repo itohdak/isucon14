@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -22,6 +23,13 @@ import (
 
 var db *sqlx.DB
 var RetryAfterMs int = 2000
+
+var (
+	userAccessTokenCache  sync.Map
+	ownerAccessTokenCache sync.Map
+	chairAccessTokenCache sync.Map
+	chairIDAccessTokenMap sync.Map
+)
 
 func main() {
 	go standalone.Integrate(":8888")

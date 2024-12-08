@@ -86,6 +86,8 @@ func chairPostActivity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	accessToken, _ := chairIDAccessTokenMap.Load(chair.ID)
+	chairAccessTokenCache.Delete(accessToken)
 
 	w.WriteHeader(http.StatusNoContent)
 }
