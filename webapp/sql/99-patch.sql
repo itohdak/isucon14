@@ -1,8 +1,7 @@
-ALTER TABLE
-    ride_statuses RENAME ride_statuses_org;
+DROP TABLE IF EXISTS ride_statuses_org;
+ALTER TABLE ride_statuses RENAME ride_statuses_org;
 
 DROP TABLE IF EXISTS ride_statuses;
-
 CREATE TABLE ride_statuses (
     id VARCHAR(26) NOT NULL,
     ride_id VARCHAR(26) NOT NULL COMMENT 'ライドID',
