@@ -21,6 +21,7 @@ import (
 )
 
 var db *sqlx.DB
+var RetryAfterMs int = 2000
 
 func main() {
 	go standalone.Integrate(":8888")
