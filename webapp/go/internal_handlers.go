@@ -76,8 +76,8 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	// 各リクエストに対して最も近い椅子を見つけて割り当てる
 	for _, ride := range rides {
 		var bestChair *ChairWithLocation
-		maxScore := math.MinInt
-
+		// maxScore := 0.0
+		minScore := math.MaxInt
 		for _, chair := range chairsWithLocations {
 			if assignedChairs[chair.ID] {
 				continue
@@ -85,11 +85,20 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 			pickupDistance := calculateDistance(ride.PickupLatitude, ride.PickupLongitude, chair.Latitude, chair.Longitude)
 			destDistance := calculateDistance(ride.DestinationLatitude, ride.DestinationLongitude, ride.PickupLatitude, ride.PickupLongitude)
-			rideFee := 500 + destDistance*100
+
+			pickupTime := pickupDistance / chair.Speed
+			destTime := destDistance / chair.Speed
+			// rideTimeTotal := pickupTime + destTime
+
+			// rideFee := 500 + destDistance*100
+
+			// feeRate := rideFee / rideTimeTotal
+
 			// 最も時給のいいものを選択
-			score := rideFee / ((pickupDistance + destDistance) / chair.Speed)
-			if score > maxScore {
-				maxScore = score
+			score := pickupTime*1 + destTime*2
+
+			if score < minScore {
+				minScore = score
 				bestChair = &chair
 			}
 		}
