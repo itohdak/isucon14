@@ -82,7 +82,7 @@ func requestPaymentGatewayPostPayment(ctx context.Context, paymentGatewayURL str
 			return nil
 		}()
 		if err != nil {
-			if retry < 5 {
+			if true {
 				retry++
 				time.Sleep(100 * time.Millisecond)
 				continue
