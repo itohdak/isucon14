@@ -28,6 +28,13 @@ var (
 	latestRideStatusCacheByRideID sync.Map
 )
 
+var (
+	userAccessTokenCache  sync.Map
+	ownerAccessTokenCache sync.Map
+	chairAccessTokenCache sync.Map
+	chairIDAccessTokenMap sync.Map
+)
+
 func main() {
 	go standalone.Integrate(":8888")
 
