@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/oklog/ulid/v2"
@@ -177,14 +176,14 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		}
 		if status != "COMPLETED" && status != "CANCELED" {
 			if req.Latitude == ride.PickupLatitude && req.Longitude == ride.PickupLongitude && status == "ENROUTE" {
-				if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "PICKUP", ride.ID); err != nil {
+				if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ?, status = ? WHERE ride_id = ?", ulid.Make().String(), "PICKUP", ride.ID); err != nil {
 					writeError(w, http.StatusInternalServerError, err)
 					return
 				}
 			}
 
 			if req.Latitude == ride.DestinationLatitude && req.Longitude == ride.DestinationLongitude && status == "CARRYING" {
-				if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "ARRIVED", ride.ID); err != nil {
+				if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ?, status = ? WHERE ride_id = ?", ulid.Make().String(), "ARRIVED", ride.ID); err != nil {
 					writeError(w, http.StatusInternalServerError, err)
 					return
 				}
@@ -342,8 +341,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 	switch req.Status {
 	// Acknowledge the ride
 	case "ENROUTE":
-		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "ENROUTE", string(ride.ID)); err != nil {
-			log.Printf("========================error on update ENROUTE%v\n", ride)
+		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ?, status = ? WHERE ride_id = ?", ulid.Make().String(), "ENROUTE", string(ride.ID)); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -358,8 +356,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, errors.New("chair has not arrived yet"))
 			return
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "CARRYING", string(ride.ID)); err != nil {
-			log.Printf("========================error on update PICKUP%v\n", ride)
+		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ?, status = ? WHERE ride_id = ?", ulid.Make().String(), "CARRYING", string(ride.ID)); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
