@@ -11,14 +11,19 @@ import (
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// 最も待たせているリクエストを取得
-	ride := &Ride{}
-	if err := db.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 1`); err != nil {
+	// 最も待たせているリクエストを最大5件取得
+	rides := []Ride{}
+	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 5`); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if len(rides) == 0 {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -53,27 +58,35 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 最も近い椅子を見つける
-	var nearestChair *ChairWithLocation
-	minDistance := math.MaxInt
+	// 割り当て済みの椅子を追跡するためのマップ
+	assignedChairs := make(map[string]bool)
 
-	for _, chair := range chairsWithLocations {
-		distance := calculateDistance(ride.PickupLatitude, ride.PickupLongitude, chair.Latitude, chair.Longitude)
-		if distance < minDistance {
-			minDistance = distance
-			nearestChair = &chair
+	// 各リクエストに対して最も近い椅子を見つけて割り当てる
+	for _, ride := range rides {
+		var nearestChair *ChairWithLocation
+		minDistance := math.MaxInt
+
+		for _, chair := range chairsWithLocations {
+			if assignedChairs[chair.ID] {
+				continue
+			}
+
+			distance := calculateDistance(ride.PickupLatitude, ride.PickupLongitude, chair.Latitude, chair.Longitude)
+			if distance < minDistance {
+				minDistance = distance
+				nearestChair = &chair
+			}
 		}
-	}
 
-	if nearestChair == nil {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	// ライドに椅子を割り当てる
-	if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", nearestChair.ID, ride.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		if nearestChair != nil {
+			// ライドに椅子を割り当てる
+			if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", nearestChair.ID, ride.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			// 割り当て済みの椅子としてマーク
+			assignedChairs[nearestChair.ID] = true
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
