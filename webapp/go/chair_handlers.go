@@ -341,7 +341,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 	switch req.Status {
 	// Acknowledge the ride
 	case "ENROUTE":
-		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "ENROUTE", ride.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "ENROUTE", string(ride.ID)); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -356,7 +356,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, errors.New("chair has not arrived yet"))
 			return
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "CARRYING", ride.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "CARRYING", string(ride.ID)); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
