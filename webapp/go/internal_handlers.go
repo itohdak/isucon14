@@ -47,7 +47,14 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
             )
         ) cl ON c.id = cl.chair_id
         WHERE c.is_active = TRUE
-        AND c.id NOT IN (SELECT chair_id FROM rides WHERE chair_id IS NOT NULL AND status != 'COMPLETED')
+        AND c.id NOT IN (
+            SELECT r.chair_id
+            FROM rides r
+            JOIN ride_statuses rs ON r.id = rs.ride_id
+						WHERE chair_id IS NOT NULL
+            GROUP BY r.chair_id, rs.ride_id
+            HAVING COUNT(rs.id) < 6
+        )
 	`
 	if err := db.SelectContext(ctx, &chairsWithLocations, query); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
