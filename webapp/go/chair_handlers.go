@@ -127,6 +127,41 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var id string
+	if err := tx.GetContext(
+		ctx,
+		&id,
+		`SELECT chair_id FROM chair_total_distance WHERE chair_id = ?`,
+		chair.ID,
+	); errors.Is(err, sql.ErrNoRows) {
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO chair_total_distance (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
+			 VALUES (?, ?, ?, ?, ?)`,
+			chair.ID, 0, location.CreatedAt, req.Latitude, req.Longitude,
+		); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert chair_total_distance: %w", err))
+			return
+		}
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE
+				 chair_total_distance
+			 SET
+				 total_distance = total_distance + ABS(latest_latitude - ?) + ABS(latest_longitude - ?),
+				 latest_timestamp = ?,
+				 latest_latitude = ?,
+				 latest_longitude = ?
+			 WHERE chair_id = ?`,
+		req.Latitude, req.Longitude, location.CreatedAt,
+		req.Latitude, req.Longitude,
+		chair.ID,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update chair_total_distance: %w", err))
+		return
+	}
+
 	ride := &Ride{}
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
