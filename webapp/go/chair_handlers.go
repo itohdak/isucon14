@@ -234,7 +234,29 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	yetSentRideStatus := RideStatus{}
 	status := ""
 
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
+	query := `
+		SELECT 
+			r.id,
+			r.user_id,
+			r.chair_id,
+			r.pickup_latitude,
+			r.pickup_longitude,
+			r.destination_latitude,
+			r.destination_longitude,
+			r.evaluation,
+			r.created_at,
+			r.updated_at
+		FROM rides r
+		JOIN ride_statuses rs ON r.id = rs.ride_id
+		WHERE chair_id = ?
+		AND rs.chair_sent_at IS NOT NULL
+		GROUP BY r.chair_id, rs.ride_id
+		HAVING COUNT(rs.id) < 6
+		ORDER BY rs.created_at
+		LIMIT 1
+	`
+
+	if err := tx.GetContext(ctx, ride, query, chair.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
 				RetryAfterMs: RetryAfterMs,
