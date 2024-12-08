@@ -3,15 +3,17 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"math"
 	"net/http"
 )
 
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// MEMO: 一旦最も待たせているリクエストに適当な空いている椅子マッチさせる実装とする。おそらくもっといい方法があるはず…
-	ride := &Ride{}
-	if err := db.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 1`); err != nil {
+
+	// 最も待たせているリクエストを最大1件取得
+	rides := []Ride{}
+	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 5`); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -20,33 +22,79 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	matched := &Chair{}
-	empty := false
-	for i := 0; i < 10; i++ {
-		if err := db.GetContext(ctx, matched, "SELECT * FROM chairs INNER JOIN (SELECT id FROM chairs WHERE is_active = TRUE ORDER BY RAND() LIMIT 1) AS tmp ON chairs.id = tmp.id LIMIT 1"); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			writeError(w, http.StatusInternalServerError, err)
-		}
-
-		if err := db.GetContext(ctx, &empty, "SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE", matched.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if empty {
-			break
-		}
-	}
-	if !empty {
+	if len(rides) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matched.ID, ride.ID); err != nil {
+	// 空いている椅子とその最新の位置情報を一度に取得
+	type ChairWithLocation struct {
+		Chair
+		Latitude  int `db:"latitude"`
+		Longitude int `db:"longitude"`
+	}
+	chairsWithLocations := []ChairWithLocation{}
+	query := `
+        SELECT c.id, cl.latitude, cl.longitude
+        FROM chairs c
+        JOIN (
+            SELECT chair_id, latitude, longitude
+            FROM chair_locations
+            WHERE (chair_id, created_at) IN (
+                SELECT chair_id, MAX(created_at)
+                FROM chair_locations
+                GROUP BY chair_id
+            )
+        ) cl ON c.id = cl.chair_id
+        WHERE c.is_active = TRUE
+        AND c.id NOT IN (
+            SELECT r.chair_id
+            FROM rides r
+            JOIN ride_statuses rs ON r.id = rs.ride_id
+						WHERE chair_id IS NOT NULL
+            GROUP BY r.chair_id, rs.ride_id
+            HAVING COUNT(rs.id) < 6
+        )
+	`
+	if err := db.SelectContext(ctx, &chairsWithLocations, query); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	if len(chairsWithLocations) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// 割り当て済みの椅子を追跡するためのマップ
+	assignedChairs := make(map[string]bool)
+
+	// 各リクエストに対して最も近い椅子を見つけて割り当てる
+	for _, ride := range rides {
+		var nearestChair *ChairWithLocation
+		minDistance := math.MaxInt
+
+		for _, chair := range chairsWithLocations {
+			if assignedChairs[chair.ID] {
+				continue
+			}
+
+			distance := calculateDistance(ride.PickupLatitude, ride.PickupLongitude, chair.Latitude, chair.Longitude)
+			if distance < minDistance {
+				minDistance = distance
+				nearestChair = &chair
+			}
+		}
+
+		if nearestChair != nil {
+			// ライドに椅子を割り当てる
+			if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", nearestChair.ID, ride.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			// 割り当て済みの椅子としてマーク
+			assignedChairs[nearestChair.ID] = true
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
