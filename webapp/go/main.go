@@ -4,7 +4,6 @@ import (
 	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,15 +15,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-
-	"github.com/kaz/pprotein/integration/standalone"
 )
 
 var db *sqlx.DB
 var RetryAfterMs int = 30
 
 func main() {
-	go standalone.Integrate(":8888")
+	// go standalone.Integrate(":8888")
 
 	mux := setup()
 	slog.Info("Listening on :8080")
@@ -72,7 +69,7 @@ func setup() http.Handler {
 	db = _db
 
 	mux := chi.NewRouter()
-	mux.Use(middleware.Logger)
+	/* mux.Use(middleware.Logger) */
 	mux.Use(middleware.Recoverer)
 	mux.HandleFunc("POST /api/initialize", postInitialize)
 
@@ -198,11 +195,11 @@ ON DUPLICATE KEY UPDATE
 		return
 	}
 
-	go func() {
+	/* go func() {
 		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
 			log.Printf("failed to communicate with pprotein: %v", err)
 		}
-	}()
+	}() */
 
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
 }
