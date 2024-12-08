@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -222,30 +223,32 @@ type chairGetNotificationResponseData struct {
 func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	chair := ctx.Value("chair").(*Chair)
-
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
-	ride := &Ride{}
-	yetSentRideStatuses := []RideStatus{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
+	var tx *sqlx.Tx
+	ride := &Ride{}
+Loop:
+	for {
+		tx, err := db.Beginx()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		defer tx.Rollback()
+		yetSentRideStatuses := []RideStatus{}
 
-	query := `
+		query := `
 		SELECT 
-			r.id,
-			r.user_id,
-			r.chair_id,
-			r.pickup_latitude,
-			r.pickup_longitude,
-			r.destination_latitude,
-			r.destination_longitude,
-			r.evaluation,
-			r.created_at,
-			r.updated_at
+			r.id as id,
+			r.user_id as user_id,
+			r.chair_id as chair_id,
+			r.pickup_latitude as pickup_latitude,
+			r.pickup_longitude as pickup_longitude,
+			r.destination_latitude as destination_latitude,
+			r.destination_longitude as destination_longitude,
+			r.evaluation	as evaluation,
+			r.created_at	as created_at,
+			r.updated_at	as updated_at
 		FROM rides r
 		JOIN ride_statuses rs ON r.id = rs.ride_id
 		WHERE r.chair_id = ?
@@ -256,18 +259,16 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		LIMIT 1
 	`
 
-	if err := tx.GetContext(ctx, ride, query, chair.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
-				RetryAfterMs: RetryAfterMs,
-			})
+		if err := tx.GetContext(ctx, ride, query, chair.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
+					RetryAfterMs: RetryAfterMs,
+				})
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-Loop:
-	for {
 		if err := tx.GetContext(ctx, &yetSentRideStatuses, `SELECT * FROM ride_statuses WHERE ride_id = ? ORDER BY created_at`, ride.ID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				status, err = getLatestRideStatus(ctx, tx, ride.ID)
@@ -296,6 +297,7 @@ Loop:
 						break Loop
 					} else {
 						continue Loop
+						tx.Rollback()
 					}
 				}
 				previousStatus = rideStatus.Status
@@ -304,7 +306,7 @@ Loop:
 	}
 
 	user := &User{}
-	err = tx.GetContext(ctx, user, "SELECT * FROM users WHERE id = ? FOR SHARE", ride.UserID)
+	err := tx.GetContext(ctx, user, "SELECT * FROM users WHERE id = ? FOR SHARE", ride.UserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
