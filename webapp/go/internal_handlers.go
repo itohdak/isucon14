@@ -13,7 +13,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// 最も待たせているリクエストを最大1件取得
 	rides := []Ride{}
-	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 1`); err != nil {
+	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 5`); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
