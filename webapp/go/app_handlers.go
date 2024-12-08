@@ -788,20 +788,11 @@ func getChairStats(ctx context.Context, tx *sqlx.Tx, chairID string) (appGetNoti
 			return stats, err
 		}
 
-		var arrivedAt, pickupedAt *time.Time
 		var isCompleted bool
 		for _, status := range rideStatuses {
-			if status.Status == "ARRIVED" {
-				arrivedAt = &status.CreatedAt
-			} else if status.Status == "CARRYING" {
-				pickupedAt = &status.CreatedAt
-			}
 			if status.Status == "COMPLETED" {
 				isCompleted = true
 			}
-		}
-		if arrivedAt == nil || pickupedAt == nil {
-			continue
 		}
 		if !isCompleted {
 			continue
