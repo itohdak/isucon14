@@ -143,6 +143,60 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := db.ExecContext(ctx, `
+  INSERT INTO chair_total_distance(
+    chair_id,
+    total_distance,
+    latest_timestamp,
+    latest_latitude,
+    latest_longitude
+)(
+    select
+        distance.chair_id,
+        distance.total_distance,
+        distance.latest_timestamp,
+        chair_locations.latitude,
+        chair_locations.longitude
+    from
+        chair_locations
+        INNER JOIN
+            (
+                SELECT
+                    chair_id,
+                    SUM(IFNULL(distance, 0)) AS total_distance,
+                    MAX(created_at) AS latest_timestamp,
+                    0 AS latest_latitude,
+                    0 AS latest_longitude
+                FROM
+                    (
+                        SELECT
+                            chair_id,
+                            created_at,
+                            ABS(latitude - LAG(latitude) OVER(PARTITION BY chair_id ORDER BY created_at)) + ABS(longitude - LAG(longitude) OVER(PARTITION BY chair_id ORDER BY created_at)) AS distance
+                        FROM
+                            chair_locations
+                    ) AS tmp
+                GROUP BY
+                    chair_id
+            ) as distance
+        ON  chair_locations.created_at = distance.latest_timestamp
+)
+ON DUPLICATE KEY UPDATE
+    total_distance =
+    VALUES(
+        total_distance
+    ),
+    latest_timestamp =
+    VALUES(
+        latest_timestamp
+    ),
+    latest_latitude = 0,
+    latest_longitude = 0
+  `); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	go func() {
 		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
 			log.Printf("failed to communicate with pprotein: %v", err)

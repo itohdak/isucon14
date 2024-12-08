@@ -21,6 +21,8 @@ CREATE TABLE chair_models
 )
   COMMENT = '椅子モデルテーブル';
 
+DROP TABLE IF EXISTS chair_total_distance;
+
 DROP TABLE IF EXISTS chairs;
 CREATE TABLE chairs
 (
@@ -35,6 +37,20 @@ CREATE TABLE chairs
   PRIMARY KEY (id)
 )
   COMMENT = '椅子情報テーブル';
+
+CREATE TABLE chair_total_distance
+(
+  chair_id     VARCHAR(26)  NOT NULL COMMENT '椅子ID（chairsテーブルへの外部キー）',
+  total_distance INTEGER    NOT NULL DEFAULT 0 COMMENT '椅子の移動距離の合計',
+  latest_timestamp   DATETIME(6)  NOT NULL,
+  latest_latitude   INTEGER     NOT NULL COMMENT '経度',
+  latest_longitude  INTEGER     NOT NULL COMMENT '緯度',
+  PRIMARY KEY (chair_id),
+  CONSTRAINT fk_chair_id FOREIGN KEY (chair_id) REFERENCES chairs (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+)
+  COMMENT = '椅子の移動距離の合計を管理するテーブル';
 
 DROP TABLE IF EXISTS chair_locations;
 CREATE TABLE chair_locations
