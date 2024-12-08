@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/oklog/ulid/v2"
@@ -342,6 +343,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 	// Acknowledge the ride
 	case "ENROUTE":
 		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "ENROUTE", string(ride.ID)); err != nil {
+			log.Printf("========================error on update ENROUTE%v\n", ride)
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -357,6 +359,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE ride_statuses SET id = ? AND status = ? WHERE ride_id = ?", ulid.Make().String(), "CARRYING", string(ride.ID)); err != nil {
+			log.Printf("========================error on update PICKUP%v\n", ride)
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
