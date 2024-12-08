@@ -35,18 +35,19 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	chairsWithLocations := []ChairWithLocation{}
 	query := `
-			SELECT c.id, cl.latitude, cl.longitude
-			FROM chairs c
-			JOIN (
-					SELECT chair_id, latitude, longitude
-					FROM chair_locations
-					WHERE (chair_id, created_at) IN (
-							SELECT chair_id, MAX(created_at)
-							FROM chair_locations
-							GROUP BY chair_id
-					)
-			) cl ON c.id = cl.chair_id
-			WHERE c.is_active = TRUE
+        SELECT c.id, cl.latitude, cl.longitude
+        FROM chairs c
+        JOIN (
+            SELECT chair_id, latitude, longitude
+            FROM chair_locations
+            WHERE (chair_id, created_at) IN (
+                SELECT chair_id, MAX(created_at)
+                FROM chair_locations
+                GROUP BY chair_id
+            )
+        ) cl ON c.id = cl.chair_id
+        WHERE c.is_active = TRUE
+        AND c.id NOT IN (SELECT chair_id FROM rides WHERE chair_id IS NOT NULL AND status != 'COMPLETED')
 	`
 	if err := db.SelectContext(ctx, &chairsWithLocations, query); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
