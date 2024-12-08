@@ -871,11 +871,28 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	chairs := []Chair{}
+	type ChairWithLocation struct {
+		Chair
+		Latitude  int `db:"latitude"`
+		Longitude int `db:"longitude"`
+	}
+
+	chairsWithLocations := []ChairWithLocation{}
 	err = tx.SelectContext(
 		ctx,
-		&chairs,
-		`SELECT * FROM chairs`,
+		&chairsWithLocations,
+		`SELECT c.*, cl.latitude, cl.longitude
+			 FROM chairs c
+			 JOIN (
+					 SELECT chair_id, latitude, longitude
+					 FROM chair_locations
+					 WHERE (chair_id, created_at) IN (
+							 SELECT chair_id, MAX(created_at)
+							 FROM chair_locations
+							 GROUP BY chair_id
+					 )
+			 ) cl ON c.id = cl.chair_id
+			 WHERE c.is_active = TRUE`,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -883,58 +900,15 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
-	for _, chair := range chairs {
-		if !chair.IsActive {
-			continue
-		}
-
-		rides := []*Ride{}
-		if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		skip := false
-		for _, ride := range rides {
-			// 過去にライドが存在し、かつ、それが完了していない場合はスキップ
-			status, err := getLatestRideStatus(ctx, tx, ride.ID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-			if status != "COMPLETED" {
-				skip = true
-				break
-			}
-		}
-		if skip {
-			continue
-		}
-
-		// 最新の位置情報を取得
-		chairLocation := &ChairLocation{}
-		err = tx.GetContext(
-			ctx,
-			chairLocation,
-			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
-			chair.ID,
-		)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
+	for _, chair := range chairsWithLocations {
+		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chair.Latitude, chair.Longitude) <= distance {
 			nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
 				ID:    chair.ID,
 				Name:  chair.Name,
 				Model: chair.Model,
 				CurrentCoordinate: Coordinate{
-					Latitude:  chairLocation.Latitude,
-					Longitude: chairLocation.Longitude,
+					Latitude:  chair.Latitude,
+					Longitude: chair.Longitude,
 				},
 			})
 		}
