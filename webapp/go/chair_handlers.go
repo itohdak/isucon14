@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -222,45 +223,90 @@ type chairGetNotificationResponseData struct {
 func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	chair := ctx.Value("chair").(*Chair)
-
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
-	ride := &Ride{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
-
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
-				RetryAfterMs: RetryAfterMs,
-			})
+	var tx *sqlx.Tx
+	ride := &Ride{}
+Loop:
+	for {
+		tx, err := db.Beginx()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+		defer tx.Rollback()
+		yetSentRideStatuses := []RideStatus{}
 
-	if err := tx.GetContext(ctx, &yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			status, err = getLatestRideStatus(ctx, tx, ride.ID)
-			if err != nil {
+		query := `
+		SELECT 
+			r.id as id,
+			r.user_id as user_id,
+			r.chair_id as chair_id,
+			r.pickup_latitude as pickup_latitude,
+			r.pickup_longitude as pickup_longitude,
+			r.destination_latitude as destination_latitude,
+			r.destination_longitude as destination_longitude,
+			r.evaluation	as evaluation,
+			r.created_at	as created_at,
+			r.updated_at	as updated_at
+		FROM rides r
+		JOIN ride_statuses rs ON r.id = rs.ride_id
+		WHERE r.chair_id = ?
+		AND rs.chair_sent_at IS NOT NULL
+		GROUP BY r.chair_id, r.id, r.user_id, r.pickup_latitude, r.pickup_longitude, r.destination_latitude, r.destination_longitude, r.evaluation, r.created_at, r.updated_at, rs.created_at
+		HAVING COUNT(r.id) < 6
+		ORDER BY rs.created_at
+		LIMIT 1
+	`
+
+		if err := tx.GetContext(ctx, ride, query, chair.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
+					RetryAfterMs: RetryAfterMs,
+				})
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := tx.GetContext(ctx, &yetSentRideStatuses, `SELECT * FROM ride_statuses WHERE ride_id = ? ORDER BY created_at`, ride.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				status, err = getLatestRideStatus(ctx, tx, ride.ID)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
+			} else {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
 		} else {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			previousStatus := ""
+			previousStatuses := map[string]string{
+				"MATCHING":  "",
+				"ENROUTE":   "MATCHING",
+				"PICKUP":    "ENROUTE",
+				"CARRYING":  "PICKUP",
+				"ARRIVED":   "CARRYING",
+				"COMPLETED": "ARRIVED",
+			}
+			for _, rideStatus := range yetSentRideStatuses {
+				if rideStatus.ChairSentAt == nil {
+					if previousStatuses[rideStatus.Status] == previousStatus {
+						yetSentRideStatus = rideStatus
+						break Loop
+					} else {
+						continue Loop
+						tx.Rollback()
+					}
+				}
+				previousStatus = rideStatus.Status
+			}
 		}
-	} else {
-		status = yetSentRideStatus.Status
 	}
 
 	user := &User{}
-	err = tx.GetContext(ctx, user, "SELECT * FROM users WHERE id = ? FOR SHARE", ride.UserID)
+	err := tx.GetContext(ctx, user, "SELECT * FROM users WHERE id = ? FOR SHARE", ride.UserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
