@@ -564,8 +564,8 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 
 	_, err = tx.ExecContext(
 		ctx,
-		`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
-		ulid.Make().String(), rideID, "COMPLETED")
+		`UPDATE ride_statuses SET id = ?, status = ? WHERE ride_id = ?`,
+		ulid.Make().String(), "COMPLETED", rideID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -788,20 +788,11 @@ func getChairStats(ctx context.Context, tx *sqlx.Tx, chairID string) (appGetNoti
 			return stats, err
 		}
 
-		var arrivedAt, pickupedAt *time.Time
 		var isCompleted bool
 		for _, status := range rideStatuses {
-			if status.Status == "ARRIVED" {
-				arrivedAt = &status.CreatedAt
-			} else if status.Status == "CARRYING" {
-				pickupedAt = &status.CreatedAt
-			}
 			if status.Status == "COMPLETED" {
 				isCompleted = true
 			}
-		}
-		if arrivedAt == nil || pickupedAt == nil {
-			continue
 		}
 		if !isCompleted {
 			continue
