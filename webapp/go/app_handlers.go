@@ -888,17 +888,6 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	chairs := []Chair{}
-	err = tx.SelectContext(
-		ctx,
-		&chairs,
-		`SELECT * FROM chairs`,
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
 	nearbyChairsFromDB := []nearbyChairFromDB{}
 	if err := tx.SelectContext(
