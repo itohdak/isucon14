@@ -44,6 +44,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	latestRideCacheByChairID.Delete(matched.ID)
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to commit in internal matching: %v", err))

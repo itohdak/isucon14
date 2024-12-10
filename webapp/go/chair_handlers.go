@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -96,6 +99,20 @@ type chairPostCoordinateResponse struct {
 	RecordedAt int64 `json:"recorded_at"`
 }
 
+var latestRideCacheByChairID sync.Map
+
+func getLatestRideByChairID(ctx context.Context, tx *sqlx.Tx, chairID string) (ride Ride, err error) {
+	if rideCached, found := latestRideCacheByChairID.Load(chairID); found {
+		ride = rideCached.(Ride)
+		return ride, nil
+	}
+	err = tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chairID)
+	if err == nil {
+		latestRideCacheByChairID.Store(chairID, ride)
+	}
+	return ride, err
+}
+
 func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := &Coordinate{}
@@ -164,8 +181,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ride := &Ride{}
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
+	if ride, err := getLatestRideByChairID(ctx, tx, chair.ID); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -235,11 +251,11 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	ride := &Ride{}
+	ride := Ride{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
 
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
+	if ride, err = getLatestRideByChairID(ctx, tx, chair.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
 				RetryAfterMs: RetryAfterMs,

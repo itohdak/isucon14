@@ -567,6 +567,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errors.New("ride not found"))
 		return
 	}
+	latestRideCacheByChairID.Delete(rideID)
 
 	_, err = tx.ExecContext(
 		ctx,
