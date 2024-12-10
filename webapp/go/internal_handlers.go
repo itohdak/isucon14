@@ -73,7 +73,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		for j, location := range locations {
 			modelCached, _ := chairModelCache.Load(chairMap[location.ChairID].Model)
 			model := modelCached.(ChairModel)
-			cost := (abs(ride.DestinationLatitude-location.Latitude) + abs(ride.DestinationLongitude-location.Longitude)) / model.Speed
+			cost := (abs(ride.PickupLatitude-location.Latitude) +
+				abs(ride.PickupLongitude-location.Longitude) +
+				abs(ride.DestinationLatitude-ride.PickupLatitude) +
+				abs(ride.DestinationLongitude-ride.PickupLongitude)) / model.Speed
 			g.AddEdge(i, n+j, 1, cost)
 		}
 	}
