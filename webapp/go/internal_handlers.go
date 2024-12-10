@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -73,10 +74,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		for j, location := range locations {
 			modelCached, _ := chairModelCache.Load(chairMap[location.ChairID].Model)
 			model := modelCached.(ChairModel)
-			cost := (abs(ride.PickupLatitude-location.Latitude) +
-				abs(ride.PickupLongitude-location.Longitude) +
-				abs(ride.DestinationLatitude-ride.PickupLatitude) +
-				abs(ride.DestinationLongitude-ride.PickupLongitude)) / model.Speed
+			cost := max((abs(ride.PickupLatitude-location.Latitude)+
+				abs(ride.PickupLongitude-location.Longitude)+
+				abs(ride.DestinationLatitude-ride.PickupLatitude)+
+				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds()), 0)
 			g.AddEdge(i, n+j, 1, cost)
 		}
 	}
