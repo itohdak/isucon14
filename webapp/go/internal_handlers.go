@@ -19,7 +19,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	rides := []Ride{}
-	numPerBatch := 20
+	numPerBatch := 50
 	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED`, numPerBatch); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
