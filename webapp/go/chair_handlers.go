@@ -101,9 +101,9 @@ type chairPostCoordinateResponse struct {
 
 var latestRideCacheByChairID sync.Map
 
-func getLatestRideByChairID(ctx context.Context, tx *sqlx.Tx, chairID string) (ride Ride, err error) {
+func getLatestRideByChairID(ctx context.Context, tx *sqlx.Tx, chairID string) (ride *Ride, err error) {
 	if rideCached, found := latestRideCacheByChairID.Load(chairID); found {
-		ride = rideCached.(Ride)
+		ride = rideCached.(*Ride)
 		return ride, nil
 	}
 	err = tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chairID)
@@ -181,7 +181,8 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ride, err := getLatestRideByChairID(ctx, tx, chair.ID); err != nil {
+	ride := &Ride{}
+	if ride, err = getLatestRideByChairID(ctx, tx, chair.ID); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -251,7 +252,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	ride := Ride{}
+	ride := &Ride{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
 
