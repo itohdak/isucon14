@@ -31,7 +31,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	if err := tx.GetContext(
 		ctx,
 		matched,
-		`SELECT * FROM chairs INNER JOIN (SELECT id FROM chairs WHERE NOT (SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = chairs.id) GROUP BY ride_id) is_completed WHERE completed = FALSE) AND is_active = TRUE ORDER BY RAND() LIMIT 1) AS tmp ON chairs.id = tmp.id FOR UPDATE SKIP LOCKED`); err != nil {
+		`SELECT * FROM chairs INNER JOIN (SELECT id FROM chairs WHERE (SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = chairs.id) GROUP BY ride_id) is_completed WHERE completed = FALSE) AND is_active = TRUE ORDER BY RAND() LIMIT 1) AS tmp ON chairs.id = tmp.id FOR UPDATE SKIP LOCKED`); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
