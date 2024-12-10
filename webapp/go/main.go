@@ -33,6 +33,7 @@ var (
 	ownerAccessTokenCache sync.Map
 	chairAccessTokenCache sync.Map
 	chairIDAccessTokenMap sync.Map
+	chairModelCache       sync.Map
 )
 
 func main() {
@@ -208,6 +209,15 @@ ON DUPLICATE KEY UPDATE
   `); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	var chairModels []ChairModel
+	if err := db.SelectContext(ctx, &chairModels, `SELECT * FROM chair_models`); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair models: %v", err))
+		return
+	}
+	for _, chairModel := range chairModels {
+		chairModelCache.Store(chairModel.Name, chairModel)
 	}
 
 	go func() {

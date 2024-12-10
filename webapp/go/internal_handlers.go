@@ -19,7 +19,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	rides := []Ride{}
-	numPerBatch := 5
+	numPerBatch := 20
 	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED`, numPerBatch); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -41,8 +41,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chairIDs := make([]string, len(chairs))
+	chairMap := map[string]Chair{}
 	for i, chair := range chairs {
 		chairIDs[i] = chair.ID
+		chairMap[chair.ID] = chair
 	}
 
 	locations := []ChairLocation{}
@@ -69,7 +71,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	for i, ride := range rides {
 		for j, location := range locations {
-			cost := abs(ride.DestinationLatitude-location.Latitude) + abs(ride.DestinationLongitude-location.Longitude)
+			modelCached, _ := chairModelCache.Load(chairMap[location.ChairID].Model)
+			model := modelCached.(ChairModel)
+			cost := (abs(ride.DestinationLatitude-location.Latitude) + abs(ride.DestinationLongitude-location.Longitude)) / model.Speed
 			g.AddEdge(i, n+j, 1, cost)
 		}
 	}
