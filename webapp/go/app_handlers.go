@@ -893,7 +893,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	if err := tx.SelectContext(
 		ctx,
 		&nearbyChairsFromDB,
-		`SELECT chairs.id AS id, chairs.name AS name, chairs.model AS model, latest_latitude AS latitude, latest_longitude AS longitude FROM chairs INNER JOIN (SELECT id FROM chairs WHERE (SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = chairs.id) GROUP BY ride_id) is_completed WHERE completed = FALSE) AND is_active = TRUE) AS tmp ON chairs.id = tmp.id INNER JOIN chair_total_distance ON chairs.id = chair_total_distance.chair_id WHERE ABS(chair_total_distance.latest_latitude - ?) + ABS(chair_total_distance.latest_longitude - ?) <= ?`,
+		`SELECT chairs.id AS id, chairs.name AS name, chairs.model AS model, latest_latitude AS latitude, latest_longitude AS longitude FROM chairs INNER JOIN (SELECT id FROM chairs WHERE (SELECT COUNT(*) = 0 FROM (SELECT COUNT(1) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = chairs.id) GROUP BY ride_id) is_completed WHERE completed = FALSE) AND is_active = TRUE) AS tmp ON chairs.id = tmp.id INNER JOIN chair_total_distance ON chairs.id = chair_total_distance.chair_id WHERE ABS(chair_total_distance.latest_latitude - ?) + ABS(chair_total_distance.latest_longitude - ?) <= ?`,
 		coordinate.Latitude, coordinate.Longitude, distance,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select nearby chairs: %v", err))
