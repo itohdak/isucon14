@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -77,12 +78,16 @@ func setup() http.Handler {
 	dbConfig.Net = "tcp"
 	dbConfig.DBName = dbname
 	dbConfig.ParseTime = true
+	dbConfig.InterpolateParams = true
 
 	_db, err := sqlx.Connect("mysql", dbConfig.FormatDSN())
 	if err != nil {
 		panic(err)
 	}
 	db = _db
+	db.SetConnMaxLifetime(10 * time.Second)
+	db.SetMaxIdleConns(512)
+	db.SetMaxOpenConns(512)
 
 	mux := chi.NewRouter()
 	mux.Use(middleware.Logger)
