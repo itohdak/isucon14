@@ -45,7 +45,12 @@ fi
 sudo systemctl restart mysql
 sudo systemctl restart nginx
 sudo systemctl restart ${APP_NAME}-go
-sudo systemctl restart isuride-matcher.service
+
+if [[ `hostname` = s1 ]]; then
+  sudo systemctl restart isuride-matcher.service
+else
+  sudo systemctl disable --now isuride-matcher.service
+fi
 
 # slow query logの有効化
 # QUERY="
