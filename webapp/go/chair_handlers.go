@@ -157,8 +157,9 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
+		} else {
+			latestRideCache.Store(chair.ID, ride)
 		}
-		latestRideCache.Store(chair.ID, ride)
 	}
 	status, err := getLatestRideStatus(ctx, tx, ride.ID)
 	if err != nil {
@@ -238,8 +239,9 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 			}
 			writeError(w, http.StatusInternalServerError, err)
 			return
+		} else {
+			latestRideCache.Store(chair.ID, ride)
 		}
-		latestRideCache.Store(chair.ID, ride)
 	}
 
 	if err := tx.GetContext(ctx, &yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
