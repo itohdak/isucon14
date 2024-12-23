@@ -23,7 +23,7 @@ import (
 )
 
 var db *sqlx.DB
-var RetryAfterMs int = 1000
+var RetryAfterMs int = 300
 
 var (
 	latestRideStatusCacheByRideID sync.Map
