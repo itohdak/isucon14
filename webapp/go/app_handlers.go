@@ -678,6 +678,8 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	s1 := time.Now()
+
 	ride := &Ride{}
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, user.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -689,6 +691,8 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	s2 := time.Now()
 
 	yetSentRideStatus := RideStatus{}
 	status := ""
@@ -707,11 +711,15 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 		status = yetSentRideStatus.Status
 	}
 
+	s3 := time.Now()
+
 	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, ride.PickupLatitude, ride.PickupLongitude, ride.DestinationLatitude, ride.DestinationLongitude)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	s4 := time.Now()
 
 	response := &appGetNotificationResponse{
 		Data: &appGetNotificationResponseData{
@@ -753,6 +761,8 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	s5 := time.Now()
+
 	if yetSentRideStatus.ID != "" {
 		_, err := tx.ExecContext(ctx, `UPDATE ride_statuses SET app_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
 		if err != nil {
@@ -760,6 +770,9 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	s6 := time.Now()
+	fmt.Printf("process time:\ts1-s2: %s\ts2-s3: %s\ts3-s4: %s\ts4-s5: %s\ts5-s6: %s\n", s2.Sub(s1), s3.Sub(s2), s4.Sub(s3), s5.Sub(s4), s6.Sub(s5))
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
