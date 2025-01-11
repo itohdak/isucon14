@@ -876,42 +876,20 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			latest_latitude AS latitude,
 			latest_longitude AS longitude
 		FROM
-			chairs
-			INNER JOIN (
-				SELECT
-					id
-				FROM
-					chairs
-				WHERE
-					(
-						SELECT
-							COUNT(*) = 0
-						FROM
-							(
-								SELECT
-									COUNT(1) = 6 AS completed
-								FROM
-									ride_statuses
-								WHERE
-									ride_id IN (
-										SELECT
-											id
-										FROM
-											rides
-										WHERE
-											chair_id = chairs.id
-									)
-								GROUP BY
-									ride_id
-							) is_completed
-						WHERE
-							completed = FALSE
-					)
-					AND is_active = TRUE
-			) AS tmp ON chairs.id = tmp.id
-			INNER JOIN chair_total_distance ON chairs.id = chair_total_distance.chair_id
+			chairs, chair_total_distance
 		WHERE
-			ABS(chair_total_distance.latest_latitude - ?) + ABS(chair_total_distance.latest_longitude - ?) <= ?`,
+			is_active = TRUE
+			AND NOT EXISTS (
+				SELECT
+					1
+				FROM
+					rides
+				WHERE
+					chair_id = chairs.id
+					AND evaluation IS NULL
+			)
+			AND chair_id = chairs.id
+			AND ABS(latest_latitude - ?) + ABS(latest_longitude - ?) <= ?`,
 		coordinate.Latitude, coordinate.Longitude, distance,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select nearby chairs: %v", err))
