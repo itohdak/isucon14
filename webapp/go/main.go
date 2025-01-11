@@ -36,6 +36,7 @@ var (
 	chairIDAccessTokenMap sync.Map
 	chairModelCache       sync.Map
 	userRideCache         sync.Map
+	chairRideCache        sync.Map
 )
 
 func main() {

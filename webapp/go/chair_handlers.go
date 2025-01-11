@@ -222,15 +222,20 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	yetSentRideStatus := RideStatus{}
 	status := ""
 
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
-				RetryAfterMs: RetryAfterMs,
-			})
+	if chairRideCached, found := chairRideCache.Load(chair.ID); found {
+		ride = chairRideCached.(*Ride)
+	} else {
+		if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
+					RetryAfterMs: RetryAfterMs,
+				})
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		chairRideCache.Store(chair.ID, ride)
 	}
 
 	if err := tx.GetContext(ctx, &yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
