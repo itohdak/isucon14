@@ -43,7 +43,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		FROM
 			chairs
 			INNER JOIN (
-				
 			 SELECT
 					id
 				FROM
@@ -147,7 +146,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	edges := g.Edges()
 	matchedUserIDs := []string{}
 	matchedChairIDs := []string{}
-	matchedString := "chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
+	// matchedString := "chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
 	for _, e := range edges {
 		if e.from == s || e.to == t || e.flow == 0 {
 			continue
@@ -155,13 +154,13 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		matchedRideID := rides[e.from].ID
 		matchedUserID := rides[e.from].UserID
 		matchedChairID := locations[e.to-n].ChairID
-		matchedString += fmt.Sprintf(
-			"%s,%s,%d,%d,%d,%d,%d,%d\n",
-			matchedChairID, matchedRideID,
-			rides[e.from].PickupLatitude, rides[e.from].PickupLongitude,
-			rides[e.from].DestinationLatitude, rides[e.from].DestinationLongitude,
-			locations[e.to-n].Latitude, locations[e.to-n].Longitude,
-		)
+		// matchedString += fmt.Sprintf(
+		// 	"%s,%s,%d,%d,%d,%d,%d,%d\n",
+		// 	matchedChairID, matchedRideID,
+		// 	rides[e.from].PickupLatitude, rides[e.from].PickupLongitude,
+		// 	rides[e.from].DestinationLatitude, rides[e.from].DestinationLongitude,
+		// 	locations[e.to-n].Latitude, locations[e.to-n].Longitude,
+		// )
 		// log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
 		tx.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
 		matchedUserIDs = append(matchedUserIDs, matchedUserID)
