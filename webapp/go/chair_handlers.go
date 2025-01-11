@@ -116,38 +116,11 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	chairLocationID := ulid.Make().String()
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`,
-		chairLocationID, chair.ID, req.Latitude, req.Longitude,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	location := &ChairLocation{}
-	if err := tx.GetContext(ctx, location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT
-			 chair_total_distance
-		 (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON DUPLICATE KEY UPDATE
-			 total_distance = total_distance + ABS(latest_latitude - ?) + ABS(latest_longitude - ?),
-			 latest_timestamp = ?,
-			 latest_latitude = ?,
-			 latest_longitude = ?`,
-		chair.ID, 0, location.CreatedAt, req.Latitude, req.Longitude,
-		req.Latitude, req.Longitude, location.CreatedAt, req.Latitude, req.Longitude,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to upsert chair_total_distance: %w", err))
-		return
+	updateCoordinateQueue <- CoordinateToUpdate{
+		ChairLocationID: ulid.Make().String(),
+		ChairID:         chair.ID,
+		Latitude:        req.Latitude,
+		Longitude:       req.Longitude,
 	}
 
 	commitCache := func() {}
@@ -207,8 +180,78 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	commitCache()
 
 	writeJSON(w, http.StatusOK, &chairPostCoordinateResponse{
-		RecordedAt: location.CreatedAt.UnixMilli(),
+		RecordedAt: time.Now().UnixMilli(),
 	})
+}
+
+func updateCoordinates() {
+	length := len(updateCoordinateQueue)
+	if length == 0 {
+		return
+	}
+	log.Printf("queue length: %d", length)
+
+	var coordinates []CoordinateToUpdate
+	for i := 0; i < length; i++ {
+		coordinate := <-updateCoordinateQueue
+		coordinates = append(coordinates, coordinate)
+	}
+
+	tx, err := db.Beginx()
+	if err != nil {
+		log.Printf("failed to begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	for _, coordinate := range coordinates {
+		coordinate.ChairLocationID = ulid.Make().String()
+	}
+	if _, err := tx.NamedExec(
+		`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (:chair_location_id, :chair_id, :latitude, :longitude)`,
+		coordinates,
+	); err != nil {
+		log.Printf("failed to insert chair_locations: %v", err)
+		return
+	}
+
+	location := &ChairLocation{}
+	if err := tx.Get(location, `SELECT * FROM chair_locations WHERE id = ?`, coordinates[0].ChairLocationID); err != nil {
+		log.Printf("failed to select chair_location: %v", err)
+		return
+	}
+
+	coordinatesWithCreatedAt := make([]CoordinateToUpdate, 0, len(coordinates))
+	for _, coordinate := range coordinates {
+		coordinatesWithCreatedAt = append(
+			coordinatesWithCreatedAt,
+			CoordinateToUpdate{
+				ChairID:   coordinate.ChairID,
+				Latitude:  coordinate.Latitude,
+				Longitude: coordinate.Longitude,
+				CreatedAt: location.CreatedAt,
+			},
+		)
+	}
+	if _, err := tx.NamedExec(
+		`INSERT INTO
+			chair_total_distance (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
+		VALUES (:chair_id, 0, :created_at, :latitude, :longitude)
+		ON DUPLICATE KEY UPDATE
+			total_distance = total_distance + ABS(latest_latitude - VALUES(latest_latitude)) + ABS(latest_longitude - VALUES(latest_longitude)),
+			latest_timestamp = VALUES(latest_timestamp),
+			latest_latitude = VALUES(latest_latitude),
+			latest_longitude = VALUES(latest_longitude)`,
+		coordinatesWithCreatedAt,
+	); err != nil {
+		log.Printf("failed to insert chair_total_distance: %v: coordinates: %v", err, coordinates)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("failed to commit: %v", err)
+		return
+	}
 }
 
 type simpleUser struct {

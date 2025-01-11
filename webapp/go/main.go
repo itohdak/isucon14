@@ -49,8 +49,27 @@ var (
 	chairNotifications sync.Map
 )
 
+var updateCoordinateQueue chan CoordinateToUpdate
+
+type CoordinateToUpdate struct {
+	ChairLocationID string    `db:"chair_location_id"`
+	ChairID         string    `db:"chair_id"`
+	Latitude        int       `db:"latitude"`
+	Longitude       int       `db:"longitude"`
+	CreatedAt       time.Time `db:"created_at"`
+}
+
 func main() {
 	go standalone.Integrate(":8888")
+
+	updateCoordinateQueue = make(chan CoordinateToUpdate, 100000)
+	go func() {
+		log.Println("start listening for updateCoordinateQueue")
+		for {
+			updateCoordinates()
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
 
 	mux := setup()
 	slog.Info("Listening on :8080")
