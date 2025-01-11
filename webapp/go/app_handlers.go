@@ -241,9 +241,14 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 		item.Chair = getAppRidesResponseItemChair{}
 
 		chair := &Chair{}
-		if err := tx.GetContext(ctx, chair, `SELECT * FROM chairs WHERE id = ?`, ride.ChairID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+		if chairCached, found := chairCache.Load(ride.ChairID); found {
+			chair = chairCached.(*Chair)
+		} else {
+			if err := tx.GetContext(ctx, chair, `SELECT * FROM chairs WHERE id = ?`, ride.ChairID); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			chairCache.Store(ride.ChairID, chair)
 		}
 		item.Chair.ID = chair.ID
 		item.Chair.Name = chair.Name
@@ -741,9 +746,14 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 
 	if ride.ChairID.Valid {
 		chair := &Chair{}
-		if err := tx.GetContext(ctx, chair, `SELECT * FROM chairs WHERE id = ?`, ride.ChairID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+		if chairCached, found := chairCache.Load(ride.ChairID); found {
+			chair = chairCached.(*Chair)
+		} else {
+			if err := tx.GetContext(ctx, chair, `SELECT * FROM chairs WHERE id = ?`, ride.ChairID); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			chairCache.Store(ride.ChairID, chair)
 		}
 
 		stats, err := getChairStats(ctx, tx, chair.ID)

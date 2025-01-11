@@ -88,6 +88,7 @@ func chairPostActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	accessToken, _ := chairIDAccessTokenMap.Load(chair.ID)
 	chairAccessTokenCache.Delete(accessToken)
+	chairCache.Delete(chair.ID)
 
 	w.WriteHeader(http.StatusNoContent)
 }
