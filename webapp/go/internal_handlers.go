@@ -83,19 +83,25 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	g.FlowL(s, t, n)
 	edges := g.Edges()
+	matchedUserIDs := []string{}
 	for _, e := range edges {
 		if e.from == s || e.to == t || e.flow == 0 {
 			continue
 		}
 		matchedRideID := rides[e.from].ID
+		matchedUserID := rides[e.from].UserID
 		matchedChairID := locations[e.to-n].ChairID
 		log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
 		tx.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
+		matchedUserIDs = append(matchedUserIDs, matchedUserID)
 	}
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to commit in internal matching: %v", err))
 		return
+	}
+	for _, matchedUserID := range matchedUserIDs {
+		userRideCache.Delete(matchedUserID)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
