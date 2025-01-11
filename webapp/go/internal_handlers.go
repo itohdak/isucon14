@@ -8,7 +8,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-var timeFactor int = 20
+var (
+	pickupFactor   int = 10
+	transferFactor int = 1
+	timeFactor     int = 30
+)
 
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
@@ -130,10 +134,12 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		for j, location := range locations {
 			modelCached, _ := chairModelCache.Load(chairMap[location.ChairID].Model)
 			model := modelCached.(ChairModel)
-			cost := max((abs(ride.PickupLatitude-location.Latitude)+
-				abs(ride.PickupLongitude-location.Longitude)+
-				abs(ride.DestinationLatitude-ride.PickupLatitude)+
-				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*timeFactor, 0)
+			cost := max(
+				((abs(ride.PickupLatitude-location.Latitude)+abs(ride.PickupLongitude-location.Longitude))*pickupFactor+
+					(abs(ride.DestinationLatitude-ride.PickupLatitude)+abs(ride.DestinationLongitude-ride.PickupLongitude))*transferFactor)/model.Speed-
+					int(time.Now().Sub(ride.CreatedAt).Seconds())*timeFactor,
+				0,
+			)
 			g.AddEdge(i, n+j, 1, cost)
 		}
 	}
