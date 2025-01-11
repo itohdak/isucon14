@@ -149,12 +149,22 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 
 	commitCache := func() {}
 	ride := &Ride{}
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
+	rideExists := false
+	if chairRideCached, found := chairRideCache.Load(chair.ID); found {
+		ride = chairRideCached.(*Ride)
+		rideExists = true
 	} else {
+		if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+		} else {
+			rideExists = true
+			chairRideCache.Store(chair.ID, ride)
+		}
+	}
+	if rideExists {
 		status, err := getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
