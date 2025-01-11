@@ -950,12 +950,18 @@ func calculateDiscountedFare(ctx context.Context, tx *sqlx.Tx, userID string, ri
 		pickupLongitude = ride.PickupLongitude
 
 		// すでにクーポンが紐づいているならそれの割引額を参照
-		if err := tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", ride.ID); err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				return 0, err
-			}
-		} else {
+		if rideCouponCached, found := rideCouponCache.Load(ride.ID); found {
+			coupon = rideCouponCached.(Coupon)
 			discount = coupon.Discount
+		} else {
+			if err := tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", ride.ID); err != nil {
+				if !errors.Is(err, sql.ErrNoRows) {
+					return 0, err
+				}
+			} else {
+				rideCouponCache.Store(ride.ID, coupon)
+				discount = coupon.Discount
+			}
 		}
 	} else {
 		// 初回利用クーポンを最優先で使う

@@ -38,6 +38,8 @@ var (
 	userRideCache         sync.Map
 	chairRideCache        sync.Map
 	chairCache            sync.Map
+	rideCouponCache       sync.Map
+	userCache             sync.Map
 )
 
 func main() {
