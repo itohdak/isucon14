@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	pickupFactor   int = 10
-	transferFactor int = 1
+	pickupFactor   int = 1
+	transferFactor int = 10
 	timeFactor     int = 30
 )
 
