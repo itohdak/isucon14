@@ -40,6 +40,9 @@ var (
 	chairCache            sync.Map
 	rideCouponCache       sync.Map
 	userCache             sync.Map
+
+	appNotifications   map[string](chan RideStatus)
+	chairNotifications map[string](chan RideStatus)
 )
 
 func main() {

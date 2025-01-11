@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 )
@@ -177,7 +178,17 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 					writeError(w, http.StatusInternalServerError, err)
 					return
 				}
-				commitCache = func() { latestRideStatusCacheByRideID.Store(ride.ID, "PICKUP") }
+				commitCache = func() {
+					latestRideStatusCacheByRideID.Store(ride.ID, "PICKUP")
+					appNotifications[ride.ID] <- RideStatus{
+						RideID: ride.ID,
+						Status: "PICKUP",
+					}
+					chairNotifications[ride.ID] <- RideStatus{
+						RideID: ride.ID,
+						Status: "PICKUP",
+					}
+				}
 			}
 
 			if req.Latitude == ride.DestinationLatitude && req.Longitude == ride.DestinationLongitude && status == "CARRYING" {
@@ -185,7 +196,17 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 					writeError(w, http.StatusInternalServerError, err)
 					return
 				}
-				commitCache = func() { latestRideStatusCacheByRideID.Store(ride.ID, "ARRIVED") }
+				commitCache = func() {
+					latestRideStatusCacheByRideID.Store(ride.ID, "ARRIVED")
+					appNotifications[ride.ID] <- RideStatus{
+						RideID: ride.ID,
+						Status: "ARRIVED",
+					}
+					chairNotifications[ride.ID] <- RideStatus{
+						RideID: ride.ID,
+						Status: "ARRIVED",
+					}
+				}
 			}
 		}
 	}
@@ -249,19 +270,16 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		chairRideCache.Store(chair.ID, ride)
 	}
 
-	if err := tx.GetContext(ctx, &yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			status, err = getLatestRideStatus(ctx, tx, ride.ID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-		} else {
+	select {
+	case newStatus := <-chairNotifications[ride.ID]:
+		yetSentRideStatus = newStatus
+		status = yetSentRideStatus.Status
+	case <-time.After(3 * time.Second):
+		status, err = getLatestRideStatus(ctx, tx, ride.ID)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-	} else {
-		status = yetSentRideStatus.Status
 	}
 
 	user := &User{}
@@ -287,6 +305,9 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	if yetSentRideStatus.Status == "COMPLETED" {
+		delete(appNotifications, ride.ID)
 	}
 
 	writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
@@ -356,7 +377,17 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		commitCache = func() { latestRideStatusCacheByRideID.Store(ride.ID, "ENROUTE") }
+		commitCache = func() {
+			latestRideStatusCacheByRideID.Store(ride.ID, "ENROUTE")
+			appNotifications[ride.ID] <- RideStatus{
+				RideID: ride.ID,
+				Status: "ENROUTE",
+			}
+			chairNotifications[ride.ID] <- RideStatus{
+				RideID: ride.ID,
+				Status: "ENROUTE",
+			}
+		}
 	// After Picking up user
 	case "CARRYING":
 		status, err := getLatestRideStatus(ctx, tx, ride.ID)
@@ -372,7 +403,17 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		commitCache = func() { latestRideStatusCacheByRideID.Store(ride.ID, "CARRYING") }
+		commitCache = func() {
+			latestRideStatusCacheByRideID.Store(ride.ID, "CARRYING")
+			appNotifications[ride.ID] <- RideStatus{
+				RideID: ride.ID,
+				Status: "CARRYING",
+			}
+			chairNotifications[ride.ID] <- RideStatus{
+				RideID: ride.ID,
+				Status: "CARRYING",
+			}
+		}
 	default:
 		writeError(w, http.StatusBadRequest, errors.New("invalid status"))
 	}
