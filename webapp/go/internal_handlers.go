@@ -2,14 +2,13 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 )
 
-var timeFactor int = 10
+var timeFactor int = 20
 
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +161,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		matchedUserIDs = append(matchedUserIDs, matchedUserID)
 		matchedChairIDs = append(matchedChairIDs, matchedChairID)
 	}
-	log.Printf(matchedString)
+	// log.Printf(matchedString)
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to commit in internal matching: %v", err))
