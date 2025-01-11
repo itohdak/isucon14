@@ -20,8 +20,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	rides := []Ride{}
-	numPerBatch := 200
-	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED`, numPerBatch); err != nil {
+	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at FOR UPDATE SKIP LOCKED`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -34,7 +33,47 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	if err := tx.SelectContext(
 		ctx,
 		&chairs,
-		`SELECT * FROM chairs INNER JOIN (SELECT id FROM chairs WHERE (SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = chairs.id) GROUP BY ride_id) is_completed WHERE completed = FALSE) AND is_active = TRUE ORDER BY RAND()) AS tmp ON chairs.id = tmp.id FOR UPDATE SKIP LOCKED`); err != nil {
+		`SELECT
+			*
+		FROM
+			chairs
+			INNER JOIN (
+				
+			 SELECT
+					id
+				FROM
+					chairs
+				WHERE
+					(
+						SELECT
+							COUNT(*) = 0
+						FROM
+							(
+								SELECT
+									COUNT(chair_sent_at) = 6 AS completed
+								FROM
+									ride_statuses
+								WHERE
+									ride_id IN (
+										SELECT
+											id
+										FROM
+											rides
+										WHERE
+											chair_id = chairs.id
+									)
+								GROUP BY
+									ride_id
+							) is_completed
+						WHERE
+							completed = FALSE
+					)
+					AND is_active = TRUE
+				ORDER BY
+					RAND()
+			) AS tmp ON chairs.id = tmp.id FOR
+		UPDATE
+			SKIP LOCKED`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 	}
 	if len(chairs) == 0 {
@@ -49,7 +88,23 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 
 	locations := []ChairLocation{}
-	query := `SELECT l1.* FROM chair_locations l1 JOIN (SELECT chair_id, MAX(created_at) AS created_at FROM chair_locations l2 GROUP BY chair_id) AS tmp ON l1.chair_id = tmp.chair_id AND l1.created_at = tmp.created_at WHERE l1.chair_id IN (?)`
+	query := `
+	SELECT
+		l1.*
+	FROM
+		chair_locations l1
+		JOIN (
+			SELECT
+				chair_id,
+				MAX(created_at) AS created_at
+			FROM
+				chair_locations l2
+			GROUP BY
+				chair_id
+		) AS tmp ON l1.chair_id = tmp.chair_id
+		AND l1.created_at = tmp.created_at
+	WHERE
+		l1.chair_id IN (?)`
 	query, param, err := sqlx.In(query, chairIDs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to prepare in query: %v", err))
@@ -85,6 +140,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	edges := g.Edges()
 	matchedUserIDs := []string{}
 	matchedChairIDs := []string{}
+	matchedString := "chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
 	for _, e := range edges {
 		if e.from == s || e.to == t || e.flow == 0 {
 			continue
@@ -92,11 +148,19 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		matchedRideID := rides[e.from].ID
 		matchedUserID := rides[e.from].UserID
 		matchedChairID := locations[e.to-n].ChairID
-		log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
+		matchedString += fmt.Sprintf(
+			"%s,%s,%d,%d,%d,%d,%d,%d\n",
+			matchedChairID, matchedRideID,
+			rides[e.from].PickupLatitude, rides[e.from].PickupLongitude,
+			rides[e.from].DestinationLatitude, rides[e.from].DestinationLongitude,
+			locations[e.to-n].Latitude, locations[e.to-n].Longitude,
+		)
+		// log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
 		tx.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
 		matchedUserIDs = append(matchedUserIDs, matchedUserID)
 		matchedChairIDs = append(matchedChairIDs, matchedChairID)
 	}
+	log.Printf(matchedString)
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to commit in internal matching: %v", err))
