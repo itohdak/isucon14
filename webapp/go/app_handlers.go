@@ -728,7 +728,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(time.Duration(PollingSec) * time.Second):
 		if ride_cached, found := userRideCache.Load(user.ID); found {
 			ride = ride_cached.(*Ride)
 		} else {

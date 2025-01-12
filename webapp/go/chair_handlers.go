@@ -273,7 +273,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		case newStatus := <-chairChannel:
 			yetSentRideStatus = newStatus
 			status = yetSentRideStatus.Status
-		case <-time.After(3 * time.Second):
+		case <-time.After(time.Duration(PollingSec) * time.Second):
 			status, err = getLatestRideStatus(ctx, tx, ride.ID)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err)
