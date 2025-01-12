@@ -48,9 +48,13 @@ var (
 func main() {
 	go standalone.Integrate(":8888")
 
+	appNotifications = make(map[string](chan RideStatus))
+	chairNotifications = make(map[string](chan RideStatus))
+
 	mux := setup()
 	slog.Info("Listening on :8080")
 	http.ListenAndServe(":8080", mux)
+
 }
 
 func setup() http.Handler {
