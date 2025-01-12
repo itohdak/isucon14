@@ -245,6 +245,15 @@ ON DUPLICATE KEY UPDATE
 		appNotifications.Store(userID, make(chan RideStatus, 10))
 	}
 
+	var rideIDs []string
+	if err := db.SelectContext(ctx, &rideIDs, `SELECT id FROM rides`); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get ride IDs: %v", err))
+		return
+	}
+	for _, rideID := range rideIDs {
+		chairNotifications.Store(rideID, make(chan RideStatus, 6))
+	}
+
 	go func() {
 		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
 			log.Printf("failed to communicate with pprotein: %v", err)
