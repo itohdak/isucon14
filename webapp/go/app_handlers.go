@@ -727,7 +727,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	yetSentRideStatus := RideStatus{}
 	status := ""
 	select {
-	case newStatus := <-chairNotifications[user.ID]:
+	case newStatus := <-appNotifications[user.ID]:
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
 		if newStatus.RideID != ride.ID {
