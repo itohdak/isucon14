@@ -44,15 +44,12 @@ var (
 	rideCouponCache sync.Map
 	userCache       sync.Map
 
-	appNotifications   map[string](chan RideStatus)
-	chairNotifications map[string](chan RideStatus)
+	appNotifications   sync.Map
+	chairNotifications sync.Map
 )
 
 func main() {
 	go standalone.Integrate(":8888")
-
-	appNotifications = make(map[string](chan RideStatus))
-	chairNotifications = make(map[string](chan RideStatus))
 
 	mux := setup()
 	slog.Info("Listening on :8080")
@@ -245,7 +242,7 @@ ON DUPLICATE KEY UPDATE
 		return
 	}
 	for _, userID := range userIDs {
-		appNotifications[userID] = make(chan RideStatus, 10)
+		appNotifications.Store(userID, make(chan RideStatus, 10))
 	}
 
 	go func() {
@@ -297,4 +294,27 @@ func secureRandomStr(b int) string {
 		panic(err)
 	}
 	return fmt.Sprintf("%x", k)
+}
+
+func notifyToChannel(userID string, rideStatusID string, rideID string, status string, createChannel bool) {
+	// notification for app
+	appChan, _ := appNotifications.Load(userID)
+	appChannel := appChan.(chan RideStatus)
+	appChannel <- RideStatus{
+		ID:     rideStatusID,
+		RideID: rideID,
+		Status: status,
+	}
+
+	// notification for chair
+	if createChannel {
+		chairNotifications.Store(rideID, make(chan RideStatus, 6))
+	}
+	chairChan, _ := chairNotifications.Load(rideID)
+	chairChannel := chairChan.(chan RideStatus)
+	chairChannel <- RideStatus{
+		ID:     rideStatusID,
+		RideID: rideID,
+		Status: status,
+	}
 }

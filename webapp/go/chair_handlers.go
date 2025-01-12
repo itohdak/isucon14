@@ -181,16 +181,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 				}
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "PICKUP")
-					appNotifications[ride.UserID] <- RideStatus{
-						ID:     rideStatusID,
-						RideID: ride.ID,
-						Status: "PICKUP",
-					}
-					chairNotifications[ride.ID] <- RideStatus{
-						ID:     rideStatusID,
-						RideID: ride.ID,
-						Status: "PICKUP",
-					}
+					notifyToChannel(ride.UserID, rideStatusID, ride.ID, "PICKUP", false)
 				}
 			}
 
@@ -202,16 +193,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 				}
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "ARRIVED")
-					appNotifications[ride.UserID] <- RideStatus{
-						ID:     rideStatusID,
-						RideID: ride.ID,
-						Status: "ARRIVED",
-					}
-					chairNotifications[ride.ID] <- RideStatus{
-						ID:     rideStatusID,
-						RideID: ride.ID,
-						Status: "ARRIVED",
-					}
+					notifyToChannel(ride.UserID, rideStatusID, ride.ID, "ARRIVED", false)
 				}
 			}
 		}
@@ -276,8 +258,10 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		chairRideCache.Store(chair.ID, ride)
 	}
 
+	chairChan, _ := chairNotifications.Load(ride.ID)
+	chairChannel := chairChan.(chan RideStatus)
 	select {
-	case newStatus := <-chairNotifications[ride.ID]:
+	case newStatus := <-chairChannel:
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
 	case <-time.After(3 * time.Second):
@@ -313,7 +297,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if yetSentRideStatus.Status == "COMPLETED" {
-		delete(chairNotifications, ride.ID)
+		chairNotifications.Delete(ride.ID)
 	}
 
 	writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
@@ -386,16 +370,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "ENROUTE")
-			appNotifications[ride.UserID] <- RideStatus{
-				ID:     rideStatusID,
-				RideID: ride.ID,
-				Status: "ENROUTE",
-			}
-			chairNotifications[ride.ID] <- RideStatus{
-				ID:     rideStatusID,
-				RideID: ride.ID,
-				Status: "ENROUTE",
-			}
+			notifyToChannel(ride.UserID, rideStatusID, ride.ID, "ENROUTE", false)
 		}
 	// After Picking up user
 	case "CARRYING":
@@ -415,16 +390,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "CARRYING")
-			appNotifications[ride.UserID] <- RideStatus{
-				ID:     rideStatusID,
-				RideID: ride.ID,
-				Status: "CARRYING",
-			}
-			chairNotifications[ride.ID] <- RideStatus{
-				ID:     rideStatusID,
-				RideID: ride.ID,
-				Status: "CARRYING",
-			}
+			notifyToChannel(ride.UserID, rideStatusID, ride.ID, "CARRYING", false)
 		}
 	default:
 		writeError(w, http.StatusBadRequest, errors.New("invalid status"))

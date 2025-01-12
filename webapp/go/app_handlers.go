@@ -122,7 +122,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	appNotifications[userID] = make(chan RideStatus, 10)
+	appNotifications.Store(userID, make(chan RideStatus, 10))
 
 	http.SetCookie(w, &http.Cookie{
 		Path:  "/",
@@ -368,17 +368,7 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "MATCHING")
-		appNotifications[user.ID] <- RideStatus{
-			ID:     rideStatusID,
-			RideID: rideID,
-			Status: "MATCHING",
-		}
-		chairNotifications[rideID] = make(chan RideStatus, 6)
-		chairNotifications[rideID] <- RideStatus{
-			ID:     rideStatusID,
-			RideID: rideID,
-			Status: "MATCHING",
-		}
+		notifyToChannel(user.ID, rideStatusID, rideID, "MATCHING", true)
 	}
 
 	var rideCount int
@@ -610,16 +600,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
-		appNotifications[ride.UserID] <- RideStatus{
-			ID:     rideStatusID,
-			RideID: rideID,
-			Status: "COMPLETED",
-		}
-		chairNotifications[rideID] <- RideStatus{
-			ID:     rideStatusID,
-			RideID: rideID,
-			Status: "COMPLETED",
-		}
+		notifyToChannel(ride.UserID, rideStatusID, rideID, "COMPLETED", false)
 	}
 
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
@@ -729,8 +710,10 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	ride := &Ride{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
+	appChan, _ := appNotifications.Load(user.ID)
+	appChannel := appChan.(chan RideStatus)
 	select {
-	case newStatus := <-appNotifications[user.ID]:
+	case newStatus := <-appChannel:
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
 		if rideCached, found := rideCache.Load(newStatus.RideID); found {
