@@ -261,18 +261,24 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 
 	chairChan, found := chairNotifications.Load(ride.ID)
 	if !found {
-		log.Printf("notification channel for chair not found: rideID: %s", ride.ID)
-	}
-	chairChannel := chairChan.(chan RideStatus)
-	select {
-	case newStatus := <-chairChannel:
-		yetSentRideStatus = newStatus
-		status = yetSentRideStatus.Status
-	case <-time.After(3 * time.Second):
+		log.Printf("notification channel for chair not found, regarding as completed: rideID: %s", ride.ID)
 		status, err = getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
+		}
+	} else {
+		chairChannel := chairChan.(chan RideStatus)
+		select {
+		case newStatus := <-chairChannel:
+			yetSentRideStatus = newStatus
+			status = yetSentRideStatus.Status
+		case <-time.After(3 * time.Second):
+			status, err = getLatestRideStatus(ctx, tx, ride.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
 		}
 	}
 
