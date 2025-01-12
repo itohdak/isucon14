@@ -29,6 +29,21 @@ for file in `\find etc -type f`; do
   sudo cp -f $file /$file
 done
 
+# usr以下のファイルについてすべてコピーする
+for file in `\find usr -type f`; do
+  # .gitkeepはコピーしない
+  if [ $file = "usr/.gitkeep" ]; then
+    continue
+  fi
+
+  # 同名のファイルが ../${HOSTNAME}/usr/ にあればそちらを優先してコピーする
+  if [ -e ../${HOSTNAME}/$file ]; then
+    sudo cp -f ../${HOSTNAME}/$file /$file
+    continue
+  fi
+  sudo cp -f $file /$file
+done
+
 # アプリケーションのビルド
 APP_NAME=isuride
 cd /home/isucon/webapp/go/
@@ -42,6 +57,7 @@ fi
 
 
 # ミドルウェア・Appの再起動
+sudo systemctl daemon-reload
 sudo systemctl restart mysql
 sudo systemctl restart nginx
 sudo systemctl restart ${APP_NAME}-go
