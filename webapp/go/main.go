@@ -66,8 +66,8 @@ func main() {
 	go func() {
 		log.Println("start listening for updateCoordinateQueue")
 		for {
-			updateCoordinates()
-			time.Sleep(1 * time.Millisecond)
+			go updateCoordinates()
+			time.Sleep(30 * time.Millisecond)
 		}
 	}()
 
