@@ -196,7 +196,7 @@ func updateCoordinates() {
 
 	var coordinates []CoordinateToUpdate
 	// var count = map[string][]time.Time{}
-	var maxLength = 200
+	var maxLength = 2000
 	mu.Lock()
 	for i := 0; i < maxLength; i++ {
 		select {
