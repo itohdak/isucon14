@@ -196,6 +196,7 @@ func updateCoordinates() {
 	var coordinates []CoordinateToUpdate
 	// var count = map[string][]time.Time{}
 	var maxLength = 200
+	mu.Lock()
 	for i := 0; i < maxLength; i++ {
 		select {
 		case coordinate := <-updateCoordinateQueue:
@@ -205,6 +206,7 @@ func updateCoordinates() {
 			break
 		}
 	}
+	mu.Unlock()
 	log.Printf("dequeued length: %d", len(coordinates))
 	// type duplicates struct {
 	// 	chairID    string
