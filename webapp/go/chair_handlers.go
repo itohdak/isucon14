@@ -234,31 +234,13 @@ func updateCoordinates() {
 		coordinate.ChairLocationID = ulid.Make().String()
 	}
 	if _, err := tx.NamedExec(
-		`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (:chair_location_id, :chair_id, :latitude, :longitude)`,
+		`INSERT INTO chair_locations (id, chair_id, latitude, longitude, created_at) VALUES (:chair_location_id, :chair_id, :latitude, :longitude, :created_at)`,
 		coordinates,
 	); err != nil {
 		log.Printf("failed to insert chair_locations: %v", err)
 		return
 	}
 
-	location := &ChairLocation{}
-	if err := tx.Get(location, `SELECT * FROM chair_locations WHERE id = ?`, coordinates[0].ChairLocationID); err != nil {
-		log.Printf("failed to select chair_location: %v", err)
-		return
-	}
-
-	coordinatesWithCreatedAt := make([]CoordinateToUpdate, 0, len(coordinates))
-	for _, coordinate := range coordinates {
-		coordinatesWithCreatedAt = append(
-			coordinatesWithCreatedAt,
-			CoordinateToUpdate{
-				ChairID:   coordinate.ChairID,
-				Latitude:  coordinate.Latitude,
-				Longitude: coordinate.Longitude,
-				CreatedAt: location.CreatedAt,
-			},
-		)
-	}
 	if _, err := tx.NamedExec(
 		`INSERT INTO
 			chair_total_distance (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
@@ -268,7 +250,7 @@ func updateCoordinates() {
 			latest_timestamp = VALUES(latest_timestamp),
 			latest_latitude = VALUES(latest_latitude),
 			latest_longitude = VALUES(latest_longitude)`,
-		coordinatesWithCreatedAt,
+		coordinates,
 	); err != nil {
 		log.Printf("failed to insert chair_total_distance: %v: coordinates: %v", err, coordinates)
 		return
