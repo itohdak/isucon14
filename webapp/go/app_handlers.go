@@ -122,6 +122,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	appNotifications[userID] = make(chan RideStatus, 10)
 
 	http.SetCookie(w, &http.Cookie{
 		Path:  "/",
@@ -366,7 +367,6 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "MATCHING")
-		appNotifications[user.ID] = make(chan RideStatus, 6)
 		appNotifications[user.ID] <- RideStatus{
 			RideID: rideID,
 			Status: "MATCHING",
@@ -438,13 +438,18 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ride := Ride{}
-	if err := tx.GetContext(ctx, &ride, "SELECT * FROM rides WHERE id = ?", rideID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	ride := &Ride{}
+	if rideCached, found := rideCache.Load(rideID); found {
+		ride = rideCached.(*Ride)
+	} else {
+		if err := tx.GetContext(ctx, ride, "SELECT * FROM rides WHERE id = ?", rideID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		rideCache.Store(rideID, ride)
 	}
 
-	fare, err := calculateDiscountedFare(ctx, tx, user.ID, &ride, req.PickupCoordinate.Latitude, req.PickupCoordinate.Longitude, req.DestinationCoordinate.Latitude, req.DestinationCoordinate.Longitude)
+	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, req.PickupCoordinate.Latitude, req.PickupCoordinate.Longitude, req.DestinationCoordinate.Latitude, req.DestinationCoordinate.Longitude)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -551,13 +556,18 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	ride := &Ride{}
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, errors.New("ride not found"))
+	if rideCached, found := rideCache.Load(rideID); found {
+		ride = rideCached.(*Ride)
+	} else {
+		if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, errors.New("ride not found"))
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		rideCache.Store(rideID, ride)
 	}
 	status, err := getLatestRideStatus(ctx, tx, ride.ID)
 	if err != nil {
@@ -614,7 +624,10 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	commitRideCache := func() { userRideCache.Store(ride.UserID, ride) }
+	commitRideCache := func() {
+		userRideCache.Store(ride.UserID, ride)
+		rideCache.Store(rideID, ride)
+	}
 
 	paymentToken := &PaymentToken{}
 	if err := tx.GetContext(ctx, paymentToken, `SELECT * FROM payment_tokens WHERE user_id = ?`, ride.UserID); err != nil {
@@ -708,35 +721,36 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	ride := &Ride{}
-	if ride_cached, found := userRideCache.Load(user.ID); found {
-		ride = ride_cached.(*Ride)
-	} else {
-		if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, user.ID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				writeJSON(w, http.StatusOK, &appGetNotificationResponse{
-					RetryAfterMs: RetryAfterMs,
-				})
-				return
-			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		userRideCache.Store(user.ID, ride)
-	}
-
 	yetSentRideStatus := RideStatus{}
 	status := ""
 	select {
 	case newStatus := <-appNotifications[user.ID]:
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
-		if newStatus.RideID != ride.ID {
+		if rideCached, found := rideCache.Load(newStatus.RideID); found {
+			ride = rideCached.(*Ride)
+		} else {
 			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? AND id = ?`, user.ID, newStatus.RideID); err != nil {
 				writeJSON(w, http.StatusInternalServerError, err)
 				return
 			}
 		}
 	case <-time.After(3 * time.Second):
+		if ride_cached, found := userRideCache.Load(user.ID); found {
+			ride = ride_cached.(*Ride)
+		} else {
+			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, user.ID); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					writeJSON(w, http.StatusOK, &appGetNotificationResponse{
+						RetryAfterMs: RetryAfterMs,
+					})
+					return
+				}
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			userRideCache.Store(user.ID, ride)
+		}
 		status, err = getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)

@@ -35,11 +35,14 @@ var (
 	chairAccessTokenCache sync.Map
 	chairIDAccessTokenMap sync.Map
 	chairModelCache       sync.Map
-	userRideCache         sync.Map
-	chairRideCache        sync.Map
-	chairCache            sync.Map
-	rideCouponCache       sync.Map
-	userCache             sync.Map
+
+	userRideCache  sync.Map
+	chairRideCache sync.Map
+	rideCache      sync.Map
+
+	chairCache      sync.Map
+	rideCouponCache sync.Map
+	userCache       sync.Map
 
 	appNotifications   map[string](chan RideStatus)
 	chairNotifications map[string](chan RideStatus)
@@ -54,7 +57,6 @@ func main() {
 	mux := setup()
 	slog.Info("Listening on :8080")
 	http.ListenAndServe(":8080", mux)
-
 }
 
 func setup() http.Handler {
@@ -235,6 +237,15 @@ ON DUPLICATE KEY UPDATE
 	}
 	for _, chairModel := range chairModels {
 		chairModelCache.Store(chairModel.Name, chairModel)
+	}
+
+	var userIDs []string
+	if err := db.SelectContext(ctx, &userIDs, `SELECT id FROM users`); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get user IDs: %v", err))
+		return
+	}
+	for _, userID := range userIDs {
+		appNotifications[userID] = make(chan RideStatus, 10)
 	}
 
 	go func() {

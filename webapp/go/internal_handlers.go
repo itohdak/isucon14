@@ -85,6 +85,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	edges := g.Edges()
 	matchedUserIDs := []string{}
 	matchedChairIDs := []string{}
+	matchedRideIDs := []string{}
 	for _, e := range edges {
 		if e.from == s || e.to == t || e.flow == 0 {
 			continue
@@ -96,6 +97,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		tx.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
 		matchedUserIDs = append(matchedUserIDs, matchedUserID)
 		matchedChairIDs = append(matchedChairIDs, matchedChairID)
+		matchedRideIDs = append(matchedRideIDs, matchedRideID)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -107,6 +109,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, matchedChairID := range matchedChairIDs {
 		chairRideCache.Delete(matchedChairID)
+	}
+	for _, matchedRideID := range matchedRideIDs {
+		rideCache.Delete(matchedRideID)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
