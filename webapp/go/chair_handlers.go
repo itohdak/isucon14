@@ -190,7 +190,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 func updateCoordinates() {
 	var coordinates []CoordinateToUpdate
 	var maxLength = 2000
-	var timeout = 500 * time.Millisecond
+	var timeout = 300 * time.Millisecond
 	now := time.Now()
 	for {
 		select {
