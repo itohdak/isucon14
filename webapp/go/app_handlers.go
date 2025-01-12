@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -710,7 +711,10 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	ride := &Ride{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
-	appChan, _ := appNotifications.Load(user.ID)
+	appChan, found := appNotifications.Load(user.ID)
+	if !found {
+		log.Printf("notification channel for app not found: userID: %s", user.ID)
+	}
 	appChannel := appChan.(chan RideStatus)
 	select {
 	case newStatus := <-appChannel:

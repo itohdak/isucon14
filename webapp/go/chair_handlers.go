@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -258,7 +259,10 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		chairRideCache.Store(chair.ID, ride)
 	}
 
-	chairChan, _ := chairNotifications.Load(ride.ID)
+	chairChan, found := chairNotifications.Load(ride.ID)
+	if !found {
+		log.Printf("notification channel for chair not found: rideID: %s", ride.ID)
+	}
 	chairChannel := chairChan.(chan RideStatus)
 	select {
 	case newStatus := <-chairChannel:

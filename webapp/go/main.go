@@ -296,9 +296,13 @@ func secureRandomStr(b int) string {
 	return fmt.Sprintf("%x", k)
 }
 
-func notifyToChannel(userID string, rideStatusID string, rideID string, status string, createChannel bool) {
+func notifyToChannel(userID string, rideStatusID string, rideID string, status string, createChannel bool) (err error) {
 	// notification for app
-	appChan, _ := appNotifications.Load(userID)
+	appChan, found := appNotifications.Load(userID)
+	if !found {
+		log.Printf("notification channel for app not found: userID: %s", userID)
+		return fmt.Errorf("notification channel for app not found: userID: %s", userID)
+	}
 	appChannel := appChan.(chan RideStatus)
 	appChannel <- RideStatus{
 		ID:     rideStatusID,
@@ -310,11 +314,16 @@ func notifyToChannel(userID string, rideStatusID string, rideID string, status s
 	if createChannel {
 		chairNotifications.Store(rideID, make(chan RideStatus, 6))
 	}
-	chairChan, _ := chairNotifications.Load(rideID)
+	chairChan, found := chairNotifications.Load(rideID)
+	if !found {
+		log.Printf("notification channel for chair not found: rideID: %s", rideID)
+		return fmt.Errorf("notification channel for chair not found: rideID: %s", rideID)
+	}
 	chairChannel := chairChan.(chan RideStatus)
 	chairChannel <- RideStatus{
 		ID:     rideStatusID,
 		RideID: rideID,
 		Status: status,
 	}
+	return nil
 }
