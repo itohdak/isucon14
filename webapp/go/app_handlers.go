@@ -357,10 +357,11 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rideStatusID := ulid.Make().String()
 	if _, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
-		ulid.Make().String(), rideID, "MATCHING",
+		rideStatusID, rideID, "MATCHING",
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -368,11 +369,13 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "MATCHING")
 		appNotifications[user.ID] <- RideStatus{
+			ID:     rideStatusID,
 			RideID: rideID,
 			Status: "MATCHING",
 		}
 		chairNotifications[rideID] = make(chan RideStatus, 6)
 		chairNotifications[rideID] <- RideStatus{
+			ID:     rideStatusID,
 			RideID: rideID,
 			Status: "MATCHING",
 		}
@@ -596,10 +599,11 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rideStatusID := ulid.Make().String()
 	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
-		ulid.Make().String(), rideID, "COMPLETED")
+		rideStatusID, rideID, "COMPLETED")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -607,10 +611,12 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
 		appNotifications[ride.UserID] <- RideStatus{
+			ID:     rideStatusID,
 			RideID: rideID,
 			Status: "COMPLETED",
 		}
 		chairNotifications[rideID] <- RideStatus{
+			ID:     rideStatusID,
 			RideID: rideID,
 			Status: "COMPLETED",
 		}
