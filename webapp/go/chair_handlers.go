@@ -188,25 +188,30 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateCoordinates() {
-	length := len(updateCoordinateQueue)
-	if length == 0 {
-		return
-	}
-	log.Printf("queue length: %d", length)
-
 	var coordinates []CoordinateToUpdate
 	var maxLength = 2000
-	for i := 0; i < maxLength; i++ {
+	var timeout = 500 * time.Millisecond
+	now := time.Now()
+	for {
 		select {
 		case coordinate := <-updateCoordinateQueue:
 			coordinates = append(coordinates, coordinate)
 		case <-time.After(1 * time.Microsecond):
 			break
 		}
+		if len(coordinates) > maxLength {
+			break
+		}
+		if time.Since(now) > timeout {
+			break
+		}
 	}
 	log.Printf("dequeued length: %d", len(coordinates))
+	if len(coordinates) == 0 {
+		return
+	}
 
-	now := time.Now()
+	now = time.Now()
 	start := now
 	tx, err := db.Beginx()
 	if err != nil {
