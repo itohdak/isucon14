@@ -117,7 +117,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	createdAt := time.Now()
-	time.Sleep(50 * time.Millisecond)
+	// time.Sleep(50 * time.Millisecond)
 	updateCoordinateQueue <- CoordinateToUpdate{
 		ChairLocationID: ulid.Make().String(),
 		ChairID:         chair.ID,
@@ -226,6 +226,8 @@ func updateCoordinates() {
 	// 	log.Printf("multiple coordinates for single chairID: %v", chairIDsWithMoreThanOne)
 	// }
 
+	now := time.Now()
+	start := now
 	tx, err := db.Beginx()
 	if err != nil {
 		log.Printf("failed to begin transaction: %v", err)
@@ -233,9 +235,6 @@ func updateCoordinates() {
 	}
 	defer tx.Rollback()
 
-	for _, coordinate := range coordinates {
-		coordinate.ChairLocationID = ulid.Make().String()
-	}
 	if _, err := tx.NamedExec(
 		`INSERT INTO chair_locations (id, chair_id, latitude, longitude, created_at) VALUES (:chair_location_id, :chair_id, :latitude, :longitude, :created_at)`,
 		coordinates,
@@ -243,6 +242,8 @@ func updateCoordinates() {
 		log.Printf("failed to insert chair_locations: %v", err)
 		return
 	}
+	log.Printf("insert chair_locations elapsed time: %s", time.Since(now))
+	now = time.Now()
 
 	if _, err := tx.NamedExec(
 		`INSERT INTO
@@ -258,11 +259,16 @@ func updateCoordinates() {
 		log.Printf("failed to insert chair_total_distance: %v: coordinates: %v", err, coordinates)
 		return
 	}
+	log.Printf("insert chair_total_distance elapsed time: %s", time.Since(now))
+	now = time.Now()
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("failed to commit: %v", err)
 		return
 	}
+	log.Printf("commit elapsed time: %s", time.Since(now))
+	log.Printf("max elapsed time: %s", time.Since(coordinates[0].CreatedAt))
+	log.Printf("process elapsed time: %s", time.Since(start))
 }
 
 type simpleUser struct {
