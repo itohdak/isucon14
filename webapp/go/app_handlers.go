@@ -366,8 +366,8 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "MATCHING")
-		appNotifications[rideID] = make(chan RideStatus, 6)
-		appNotifications[rideID] <- RideStatus{
+		appNotifications[user.ID] = make(chan RideStatus, 6)
+		appNotifications[user.ID] <- RideStatus{
 			RideID: rideID,
 			Status: "MATCHING",
 		}
@@ -596,7 +596,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
-		appNotifications[rideID] <- RideStatus{
+		appNotifications[ride.UserID] <- RideStatus{
 			RideID: rideID,
 			Status: "COMPLETED",
 		}
@@ -727,9 +727,15 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	yetSentRideStatus := RideStatus{}
 	status := ""
 	select {
-	case newStatus := <-chairNotifications[ride.ID]:
+	case newStatus := <-chairNotifications[user.ID]:
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
+		if newStatus.RideID != ride.ID {
+			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? AND id = ?`, user.ID, newStatus.RideID); err != nil {
+				writeJSON(w, http.StatusInternalServerError, err)
+				return
+			}
+		}
 	case <-time.After(3 * time.Second):
 		status, err = getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
@@ -800,9 +806,6 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
-	}
-	if yetSentRideStatus.Status == "COMPLETED" {
-		delete(chairNotifications, ride.ID)
 	}
 
 	writeJSON(w, http.StatusOK, response)

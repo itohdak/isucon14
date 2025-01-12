@@ -180,7 +180,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 				}
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "PICKUP")
-					appNotifications[ride.ID] <- RideStatus{
+					appNotifications[ride.UserID] <- RideStatus{
 						RideID: ride.ID,
 						Status: "PICKUP",
 					}
@@ -198,7 +198,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 				}
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "ARRIVED")
-					appNotifications[ride.ID] <- RideStatus{
+					appNotifications[ride.UserID] <- RideStatus{
 						RideID: ride.ID,
 						Status: "ARRIVED",
 					}
@@ -307,7 +307,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if yetSentRideStatus.Status == "COMPLETED" {
-		delete(appNotifications, ride.ID)
+		delete(chairNotifications, ride.ID)
 	}
 
 	writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
@@ -379,7 +379,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "ENROUTE")
-			appNotifications[ride.ID] <- RideStatus{
+			appNotifications[ride.UserID] <- RideStatus{
 				RideID: ride.ID,
 				Status: "ENROUTE",
 			}
@@ -405,7 +405,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "CARRYING")
-			appNotifications[ride.ID] <- RideStatus{
+			appNotifications[ride.UserID] <- RideStatus{
 				RideID: ride.ID,
 				Status: "CARRYING",
 			}
