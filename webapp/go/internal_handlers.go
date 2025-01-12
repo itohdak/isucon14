@@ -72,8 +72,14 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	for i, ride := range rides {
 		for j, location := range locations {
-			modelCached, _ := chairModelCache.Load(chairMap[location.ChairID].Model)
-			model := modelCached.(ChairModel)
+			var model = ChairModel{
+				Speed: 1,
+			}
+			if modelCached, found := chairModelCache.Load(chairMap[location.ChairID].Model); found {
+				model = modelCached.(ChairModel)
+			} else {
+				log.Printf("chair model not found: model name: %s", chairMap[location.ChairID].Model)
+			}
 			cost := max((abs(ride.PickupLatitude-location.Latitude)+
 				abs(ride.PickupLongitude-location.Longitude)+
 				abs(ride.DestinationLatitude-ride.PickupLatitude)+
