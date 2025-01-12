@@ -192,9 +192,20 @@ func updateCoordinates() {
 	log.Printf("queue length: %d", length)
 
 	var coordinates []CoordinateToUpdate
+	var count = map[string]int{}
 	for i := 0; i < length; i++ {
 		coordinate := <-updateCoordinateQueue
 		coordinates = append(coordinates, coordinate)
+		count[coordinate.ChairID] += 1
+	}
+	var chairIDsWithMoreThanOne = make([]string, 0, len(count))
+	for chairID, cnt := range count {
+		if cnt > 1 {
+			chairIDsWithMoreThanOne = append(chairIDsWithMoreThanOne, chairID)
+		}
+	}
+	if len(chairIDsWithMoreThanOne) > 0 {
+		log.Printf("multiple coordinates for single chairID: %v", chairIDsWithMoreThanOne)
 	}
 
 	tx, err := db.Beginx()
