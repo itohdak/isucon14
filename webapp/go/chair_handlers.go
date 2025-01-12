@@ -116,11 +116,13 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	createdAt := time.Now()
 	updateCoordinateQueue <- CoordinateToUpdate{
 		ChairLocationID: ulid.Make().String(),
 		ChairID:         chair.ID,
 		Latitude:        req.Latitude,
 		Longitude:       req.Longitude,
+		CreatedAt:       createdAt,
 	}
 
 	commitCache := func() {}
@@ -180,7 +182,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	commitCache()
 
 	writeJSON(w, http.StatusOK, &chairPostCoordinateResponse{
-		RecordedAt: time.Now().UnixMilli(),
+		RecordedAt: createdAt.UnixMilli(),
 	})
 }
 
@@ -192,16 +194,23 @@ func updateCoordinates() {
 	log.Printf("queue length: %d", length)
 
 	var coordinates []CoordinateToUpdate
-	var count = map[string]int{}
+	var count = map[string][]time.Time{}
 	for i := 0; i < length; i++ {
 		coordinate := <-updateCoordinateQueue
 		coordinates = append(coordinates, coordinate)
-		count[coordinate.ChairID] += 1
+		count[coordinate.ChairID] = append(count[coordinate.ChairID], coordinate.CreatedAt)
 	}
-	var chairIDsWithMoreThanOne = make([]string, 0, len(count))
-	for chairID, cnt := range count {
-		if cnt > 1 {
-			chairIDsWithMoreThanOne = append(chairIDsWithMoreThanOne, chairID)
+	type duplicates struct {
+		chairID    string
+		timestamps []time.Time
+	}
+	var chairIDsWithMoreThanOne = make([]duplicates, 0, len(count))
+	for chairID, timestamps := range count {
+		if len(timestamps) > 1 {
+			chairIDsWithMoreThanOne = append(chairIDsWithMoreThanOne, duplicates{
+				chairID:    chairID,
+				timestamps: timestamps,
+			})
 		}
 	}
 	if len(chairIDsWithMoreThanOne) > 0 {
