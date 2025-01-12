@@ -120,7 +120,7 @@ func setup() http.Handler {
 	db.SetMaxOpenConns(512)
 
 	mux := chi.NewRouter()
-	mux.Use(middleware.Logger)
+	// mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
 	mux.HandleFunc("POST /api/initialize", postInitialize)
 
@@ -273,11 +273,11 @@ ON DUPLICATE KEY UPDATE
 		chairNotifications.Store(rideID, make(chan RideStatus, 6))
 	}
 
-	go func() {
-		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
-			log.Printf("failed to communicate with pprotein: %v", err)
-		}
-	}()
+	// go func() {
+	// 	if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
+	// 		log.Printf("failed to communicate with pprotein: %v", err)
+	// 	}
+	// }()
 
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
 }
