@@ -194,28 +194,34 @@ func updateCoordinates() {
 	log.Printf("queue length: %d", length)
 
 	var coordinates []CoordinateToUpdate
-	var count = map[string][]time.Time{}
-	for i := 0; i < length; i++ {
-		coordinate := <-updateCoordinateQueue
-		coordinates = append(coordinates, coordinate)
-		count[coordinate.ChairID] = append(count[coordinate.ChairID], coordinate.CreatedAt)
-	}
-	type duplicates struct {
-		chairID    string
-		timestamps []time.Time
-	}
-	var chairIDsWithMoreThanOne = make([]duplicates, 0, len(count))
-	for chairID, timestamps := range count {
-		if len(timestamps) > 1 {
-			chairIDsWithMoreThanOne = append(chairIDsWithMoreThanOne, duplicates{
-				chairID:    chairID,
-				timestamps: timestamps,
-			})
+	// var count = map[string][]time.Time{}
+	var maxLength = 200
+	for i := 0; i < maxLength; i++ {
+		select {
+		case coordinate := <-updateCoordinateQueue:
+			coordinates = append(coordinates, coordinate)
+			// count[coordinate.ChairID] = append(count[coordinate.ChairID], coordinate.CreatedAt)
+		case <-time.After(1 * time.Microsecond):
+			break
 		}
 	}
-	if len(chairIDsWithMoreThanOne) > 0 {
-		log.Printf("multiple coordinates for single chairID: %v", chairIDsWithMoreThanOne)
-	}
+	log.Printf("dequeued length: %d", len(coordinates))
+	// type duplicates struct {
+	// 	chairID    string
+	// 	timestamps []time.Time
+	// }
+	// var chairIDsWithMoreThanOne = make([]duplicates, 0, len(count))
+	// for chairID, timestamps := range count {
+	// 	if len(timestamps) > 1 {
+	// 		chairIDsWithMoreThanOne = append(chairIDsWithMoreThanOne, duplicates{
+	// 			chairID:    chairID,
+	// 			timestamps: timestamps,
+	// 		})
+	// 	}
+	// }
+	// if len(chairIDsWithMoreThanOne) > 0 {
+	// 	log.Printf("multiple coordinates for single chairID: %v", chairIDsWithMoreThanOne)
+	// }
 
 	tx, err := db.Beginx()
 	if err != nil {
