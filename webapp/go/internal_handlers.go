@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -95,6 +96,8 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	g.FlowL(s, t, n)
 	edges := g.Edges()
+	matchedString := "chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
+	matchedCount := 0
 	for _, e := range edges {
 		if e.from == s || e.to == t || e.flow == 0 {
 			continue
@@ -113,7 +116,11 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		notifyToChannel("", matchedChairID, rideStatusID, matchedRideID, "MATCHING")
+		matchedString += fmt.Sprintf("%s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, rides[e.from].PickupLatitude, rides[e.from].PickupLongitude, rides[e.from].DestinationLatitude, rides[e.from].DestinationLongitude, chairs[e.to-n].Latitude, chairs[e.to-n].Longitude)
+		matchedCount += 1
 	}
+	log.Printf("internalGetMatching: matches: %d, chairs: %d, rides: %d", matchedCount, len(chairs), len(rides))
+	log.Printf(matchedString)
 
 	w.WriteHeader(http.StatusNoContent)
 }
