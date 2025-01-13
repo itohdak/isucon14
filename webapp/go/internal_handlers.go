@@ -135,7 +135,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	matchesB := execMatching(ridesB, chairsB)
 	matches := append(matchesA, matchesB...)
 
-	matchedString := "chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
+	matchedString := "===========chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
 	matchedCount := 0
 	for _, match := range matches {
 		matchedRideID := match.Ride.ID
@@ -152,10 +152,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		notifyToChannel("", matchedChairID, rideStatusID, matchedRideID, "MATCHING")
-		matchedString += fmt.Sprintf("%s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
+		matchedString += fmt.Sprintf("===========%s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
 		matchedCount += 1
 	}
-	log.Printf("internalGetMatching: matches: %d, chairs: %d, rides: %d", matchedCount, len(chairs), len(rides))
+	log.Printf("===========internalGetMatching: matches: %d, chairs: %d, rides: %d", matchedCount, len(chairs), len(rides))
 	log.Printf(matchedString)
 
 	w.WriteHeader(http.StatusNoContent)
