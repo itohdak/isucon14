@@ -201,9 +201,9 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateCoordinates() {
-	var coordinates []CoordinateToUpdate
 	var maxLength = 2000
-	var timeout = 100 * time.Millisecond
+	var coordinates = make([]CoordinateToUpdate, 0, maxLength)
+	var timeout = 300 * time.Millisecond
 	now := time.Now()
 	for {
 		select {
@@ -212,7 +212,7 @@ func updateCoordinates() {
 		case <-time.After(1 * time.Microsecond):
 			break
 		}
-		if len(coordinates) > maxLength {
+		if len(coordinates) == maxLength {
 			break
 		}
 		if time.Since(now) > timeout {
