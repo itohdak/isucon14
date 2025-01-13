@@ -26,6 +26,9 @@ type MatchingResult struct {
 	Ride  Ride
 }
 
+func cube(f float64) float64 {
+	return f * f * f
+}
 func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 	n, m := len(rides), len(chairs)
 	g := newMinCostFlow(n + m + 2)
@@ -46,14 +49,14 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 			} else {
 				log.Printf("chair model not found: model name: %s", chair.Model)
 			}
-			var costReductionSec float64 = 10
+			var costReductionSec float64 = 30
 			cost := float64(
 				abs(ride.PickupLatitude-chair.Latitude)+
 					abs(ride.PickupLongitude-chair.Longitude)+
 					abs(ride.DestinationLatitude-ride.PickupLatitude)+
 					abs(ride.DestinationLongitude-ride.PickupLongitude)) /
 				float64(model.Speed) *
-				max(0, (costReductionSec-time.Since(ride.CreatedAt).Seconds())) / costReductionSec
+				cube(max(0, (costReductionSec-time.Since(ride.CreatedAt).Seconds()))/costReductionSec)
 			g.AddEdge(i, n+j, 1, int(cost))
 		}
 	}
