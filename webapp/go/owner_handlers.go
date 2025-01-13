@@ -116,28 +116,22 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type Sales struct {
-		ID          string    `db:"id"`
-		OwnerID     string    `db:"owner_id"`
-		Name        string    `db:"name"`
-		Model       string    `db:"model"`
-		IsActive    bool      `db:"is_active"`
-		AccessToken string    `db:"access_token"`
-		CreatedAt   time.Time `db:"created_at"`
-		UpdatedAt   time.Time `db:"updated_at"`
-
-		Sales int `db:"sales"`
+		ID    string `db:"id"`
+		Name  string `db:"name"`
+		Model string `db:"model"`
+		Sales int    `db:"sales"`
 	}
 	query := `
 	 SELECT
-	 	c.*,
+	 	c.id AS id,
+		c.name AS name,
+		c.model AS model,
 	 	IFNULL(SUM(sales), 0) AS sales
 	 FROM
 	 	chairs c
 	 LEFT JOIN rides r
-	 ON c.id = r.chair_id
-	 WHERE
-		r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND AND
-	 	owner_id = ?
+	 ON c.id = r.chair_id AND r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
+	 WHERE owner_id = ?
 	 GROUP BY c.id`
 	salesSummary := []Sales{}
 	if err := tx.SelectContext(ctx, &salesSummary, query, since, until, owner.ID); err != nil {
