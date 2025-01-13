@@ -326,7 +326,7 @@ func secureRandomStr(b int) string {
 
 func notifyToChannel(userID string, chairID string, rideStatusID string, rideID string, status string) (err error) {
 	// notification for app
-	if userID == "" {
+	if userID != "" {
 		appChan, found := appNotifications.Load(userID)
 		if !found {
 			log.Printf("notification channel for app not found: userID: %s", userID)
@@ -340,7 +340,7 @@ func notifyToChannel(userID string, chairID string, rideStatusID string, rideID 
 		}
 	}
 	// notification for chair
-	if chairID == "" {
+	if chairID != "" {
 		chairChan, found := chairNotifications.Load(chairID)
 		if !found {
 			log.Printf("notification channel for chair not found: chairID: %s", chairID)
