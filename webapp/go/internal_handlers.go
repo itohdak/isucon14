@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -131,8 +132,19 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	matchesA := execMatching(ridesA, chairsA)
-	matchesB := execMatching(ridesB, chairsB)
+	var wg sync.WaitGroup
+	var matchesA, matchesB []MatchingResult
+	wg.Add(1)
+	go func() {
+		matchesA = execMatching(ridesA, chairsA)
+		wg.Done()
+	}()
+	wg.Add(1)
+	go func() {
+		matchesB = execMatching(ridesB, chairsB)
+		wg.Done()
+	}()
+	wg.Wait()
 	matches := append(matchesA, matchesB...)
 
 	matchedString := "===========chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
