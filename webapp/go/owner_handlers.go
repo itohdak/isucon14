@@ -129,16 +129,18 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `SELECT
 	 	c.*,
-		IFNULL(SUM(500 + 100 * (ABS(r.pickup_latitude - r.destination_latitude) + ABS(r.pickup_longitude - r.destination_longitude))), 0) AS sales
+		IFNULL(r.sales, 0) AS sales
 	 FROM chairs c
 	 LEFT JOIN (
-	 	SELECT r.*
+	 	SELECT
+			chair_id,
+			SUM(500 + 100 * (ABS(r.pickup_latitude - r.destination_latitude) + ABS(r.pickup_longitude - r.destination_longitude))) AS sales
 		FROM rides r, ride_statuses rs
 		WHERE r.id = rs.ride_id AND rs.status = 'COMPLETED' AND r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
+		GROUP BY chair_id
 	 ) r
-	 ON c.id = r.chair_id AND
-	 	owner_id = ?
-	 GROUP BY c.id`
+	 ON c.id = r.chair_id
+	 WHERE owner_id = ?`
 	salesSummary := []Sales{}
 	if err := tx.SelectContext(ctx, &salesSummary, query, since, until, owner.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get sales summary: %w", err))
