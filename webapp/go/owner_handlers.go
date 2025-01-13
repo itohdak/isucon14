@@ -111,6 +111,12 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	chairs := []Chair{}
+	if err := tx.SelectContext(ctx, &chairs, "SELECT * FROM chairs WHERE owner_id = ?", owner.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	res := ownerGetSalesResponse{
 		TotalSales: 0,
 	}
@@ -127,34 +133,39 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 
 		Sales int `db:"sales"`
 	}
-	query := `SELECT
+	query := `
+	 SELECT
 	 	c.*,
-		IFNULL(r.sales, 0) AS sales
-	 FROM chairs c
-	 LEFT JOIN (
-	 	SELECT
-			chair_id,
-			SUM(500 + 100 * (ABS(r.pickup_latitude - r.destination_latitude) + ABS(r.pickup_longitude - r.destination_longitude))) AS sales
-		FROM rides r, ride_statuses rs
-		WHERE r.id = rs.ride_id AND rs.status = 'COMPLETED' AND r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
-		GROUP BY chair_id
-	 ) r
-	 ON c.id = r.chair_id
-	 WHERE owner_id = ?`
+	 	SUM(500 + 100 * (ABS(r.pickup_latitude - r.destination_latitude) + ABS(r.pickup_longitude - r.destination_longitude))) AS sales
+	 FROM
+	 	chairs c, rides r, ride_statuses rs
+	 WHERE
+	 	c.id = r.chair_id AND r.id = rs.ride_id AND
+		rs.status = 'COMPLETED' AND r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND AND
+	 	owner_id = ?
+	 GROUP BY c.id`
 	salesSummary := []Sales{}
 	if err := tx.SelectContext(ctx, &salesSummary, query, since, until, owner.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get sales summary: %w", err))
 		return
 	}
-	modelSalesByModel := map[string]int{}
+	salesMap := make(map[string]Sales, len(salesSummary))
 	for _, sales := range salesSummary {
-		res.TotalSales += sales.Sales
+		salesMap[sales.ID] = sales
+	}
+	modelSalesByModel := map[string]int{}
+	for _, chair := range chairs {
+		actualSales := 0
+		if sales, ok := salesMap[chair.ID]; ok {
+			actualSales = sales.Sales
+		}
+		res.TotalSales += actualSales
 		res.Chairs = append(res.Chairs, chairSales{
-			ID:    sales.ID,
-			Name:  sales.Name,
-			Sales: sales.Sales,
+			ID:    chair.ID,
+			Name:  chair.Name,
+			Sales: actualSales,
 		})
-		modelSalesByModel[sales.Model] += sales.Sales
+		modelSalesByModel[chair.Model] += actualSales
 	}
 
 	models := []modelSales{}
