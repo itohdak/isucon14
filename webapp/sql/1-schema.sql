@@ -47,10 +47,7 @@ CREATE TABLE chair_total_distance
   latest_timestamp   DATETIME(6)  NOT NULL,
   latest_latitude   INTEGER     NOT NULL COMMENT '経度',
   latest_longitude  INTEGER     NOT NULL COMMENT '緯度',
-  PRIMARY KEY (chair_id),
-  CONSTRAINT fk_chair_id FOREIGN KEY (chair_id) REFERENCES chairs (id)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE
+  PRIMARY KEY (chair_id)
 )
   COMMENT = '椅子の移動距離の合計を管理するテーブル';
 
