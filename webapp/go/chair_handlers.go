@@ -118,7 +118,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	createdAt := time.Now()
-	time.Sleep(30 * time.Millisecond)
+	// time.Sleep(30 * time.Millisecond)
 	updateCoordinateQueue <- CoordinateToUpdate{
 		ChairLocationID: ulid.Make().String(),
 		ChairID:         chair.ID,
@@ -199,7 +199,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 func updateCoordinates() {
 	var coordinates []CoordinateToUpdate
 	var maxLength = 2000
-	var timeout = 500 * time.Millisecond
+	var timeout = 100 * time.Millisecond
 	now := time.Now()
 	for {
 		select {
