@@ -281,6 +281,11 @@ ON DUPLICATE KEY UPDATE
 		initialFare, farePerDistance,
 	)
 
+	db.ExecContext(
+		ctx,
+		`UPDATE chairs SET is_available = 0 WHERE (SELECT COUNT(*) FROM rides WHERE chair_id = chairs.id AND evaluation IS NULL)`,
+	)
+
 	go func() {
 		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
 			log.Printf("failed to communicate with pprotein: %v", err)

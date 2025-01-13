@@ -589,6 +589,14 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errors.New("ride not found"))
 		return
 	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE chairs SET is_available = ? WHERE id = ?`,
+		true, ride.ChairID,
+	); err != nil {
+		writeError(w, http.StatusNotFound, fmt.Errorf("failed to update chair availability to true: chair_id: %s: %w", ride.ChairID, err))
+		return
+	}
 
 	rideStatusID := ulid.Make().String()
 	_, err = tx.ExecContext(
@@ -934,15 +942,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			chairs, chair_total_distance
 		WHERE
 			is_active = TRUE
-			AND NOT EXISTS (
-				SELECT
-					1
-				FROM
-					rides
-				WHERE
-					chair_id = chairs.id
-					AND evaluation IS NULL
-			)
+			AND is_available = TRUE
 			AND chair_id = chairs.id
 			AND ABS(latest_latitude - ?) + ABS(latest_longitude - ?) <= ?`,
 		coordinate.Latitude, coordinate.Longitude, distance,

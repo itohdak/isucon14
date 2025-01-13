@@ -143,6 +143,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		matchedChairID := match.Chair.ID
 		// log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
 		db.ExecContext(ctx, "UPDATE rides SET chair_id = ?, updated_at = ? WHERE id = ?", matchedChairID, time.Now(), matchedRideID)
+		if _, err := db.ExecContext(ctx, "UPDATE chairs SET is_available = ? WHERE id = ?", false, matchedChairID); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update chair availability to false: chair_id: %s: %w", matchedChairID, err))
+			return
+		}
 		userRideCache.Delete(matchedUserID)
 		chairRideCache.Delete(matchedChairID)
 		rideCache.Delete(matchedRideID)
