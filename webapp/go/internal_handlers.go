@@ -21,6 +21,53 @@ type ChairWithLatLon struct {
 	Longitude int `db:"longitude"`
 }
 
+type MatchingResult struct {
+	Chair ChairWithLatLon
+	Ride  Ride
+}
+
+func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
+	n, m := len(rides), len(chairs)
+	g := newMinCostFlow(n + m + 2)
+	s, t := n+m, n+m+1
+	for i, _ := range rides {
+		g.AddEdge(s, i, 1, 0)
+	}
+	for i, _ := range chairs {
+		g.AddEdge(n+i, t, 1, 0)
+	}
+	for i, ride := range rides {
+		for j, chair := range chairs {
+			var model = ChairModel{
+				Speed: 1,
+			}
+			if modelCached, found := chairModelCache.Load(chair.Model); found {
+				model = modelCached.(ChairModel)
+			} else {
+				log.Printf("chair model not found: model name: %s", chair.Model)
+			}
+			cost := max((abs(ride.PickupLatitude-chair.Latitude)+
+				abs(ride.PickupLongitude-chair.Longitude)+
+				abs(ride.DestinationLatitude-ride.PickupLatitude)+
+				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*50, 0)
+			g.AddEdge(i, n+j, 1, cost)
+		}
+	}
+	g.FlowL(s, t, n)
+	edges := g.Edges()
+	matches := make([]MatchingResult, 0, len(edges))
+	for _, e := range edges {
+		if e.from == s || e.to == t || e.flow == 0 {
+			continue
+		}
+		matches = append(matches, MatchingResult{
+			Chair: chairs[e.to-n],
+			Ride:  rides[e.from],
+		})
+	}
+	return matches
+}
+
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -68,43 +115,32 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	n, m := len(rides), len(chairs)
-	g := newMinCostFlow(n + m + 2)
-	s, t := n+m, n+m+1
-	for i, _ := range rides {
-		g.AddEdge(s, i, 1, 0)
-	}
-	for i, _ := range chairs {
-		g.AddEdge(n+i, t, 1, 0)
-	}
-	for i, ride := range rides {
-		for j, chair := range chairs {
-			var model = ChairModel{
-				Speed: 1,
-			}
-			if modelCached, found := chairModelCache.Load(chair.Model); found {
-				model = modelCached.(ChairModel)
-			} else {
-				log.Printf("chair model not found: model name: %s", chair.Model)
-			}
-			cost := max((abs(ride.PickupLatitude-chair.Latitude)+
-				abs(ride.PickupLongitude-chair.Longitude)+
-				abs(ride.DestinationLatitude-ride.PickupLatitude)+
-				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*50, 0)
-			g.AddEdge(i, n+j, 1, cost)
+	var ridesA, ridesB []Ride
+	var chairsA, chairsB []ChairWithLatLon
+	for _, ride := range rides {
+		if ride.PickupLatitude < 150 {
+			ridesA = append(ridesA, ride)
+		} else {
+			ridesB = append(ridesB, ride)
 		}
 	}
-	g.FlowL(s, t, n)
-	edges := g.Edges()
+	for _, chair := range chairs {
+		if chair.Latitude < 150 {
+			chairsA = append(chairsA, chair)
+		} else {
+			chairsB = append(chairsB, chair)
+		}
+	}
+	matchesA := execMatching(ridesA, chairsA)
+	matchesB := execMatching(ridesB, chairsB)
+	matches := append(matchesA, matchesB...)
+
 	matchedString := "chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
 	matchedCount := 0
-	for _, e := range edges {
-		if e.from == s || e.to == t || e.flow == 0 {
-			continue
-		}
-		matchedRideID := rides[e.from].ID
-		matchedUserID := rides[e.from].UserID
-		matchedChairID := chairs[e.to-n].ID
+	for _, match := range matches {
+		matchedRideID := match.Ride.ID
+		matchedUserID := match.Ride.UserID
+		matchedChairID := match.Chair.ID
 		// log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
 		db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
 		userRideCache.Delete(matchedUserID)
@@ -116,7 +152,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		notifyToChannel("", matchedChairID, rideStatusID, matchedRideID, "MATCHING")
-		matchedString += fmt.Sprintf("%s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, rides[e.from].PickupLatitude, rides[e.from].PickupLongitude, rides[e.from].DestinationLatitude, rides[e.from].DestinationLongitude, chairs[e.to-n].Latitude, chairs[e.to-n].Longitude)
+		matchedString += fmt.Sprintf("%s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
 		matchedCount += 1
 	}
 	log.Printf("internalGetMatching: matches: %d, chairs: %d, rides: %d", matchedCount, len(chairs), len(rides))
