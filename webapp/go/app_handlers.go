@@ -598,14 +598,17 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	commitChairStatsCache := func() {
-		statsCached, found := chairStatsCache.Load(ride.ChairID)
+		chairID := ride.ChairID.String
+		statsCached, found := chairStatsCache.Load(chairID)
 		if !found {
+			log.Printf("######cache not found for chair_id: %s", chairID)
 			return
 		}
 		stats := statsCached.(ChairStats)
 		stats.TotalRideCount += 1
 		stats.TotalEvaluation += int64(req.Evaluation)
-		chairStatsCache.Store(ride.ChairID, stats)
+		log.Printf("######update cache: chair_id: %s, contents: %v", chairID, stats)
+		chairStatsCache.Store(chairID, stats)
 	}
 
 	rideStatusID := ulid.Make().String()
