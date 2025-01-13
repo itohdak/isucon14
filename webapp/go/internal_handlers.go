@@ -71,17 +71,6 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// MEMO: 一旦最も待たせているリクエストに適当な空いている椅子マッチさせる実装とする。おそらくもっといい方法があるはず…
-	rides := []Ride{}
-	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 150`); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	if len(rides) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
 	chairs := []ChairWithLatLon{}
 	if err := db.Select(&chairs, `
  WITH chair_latest_location AS (
@@ -114,22 +103,26 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
-	var ridesA, ridesB []Ride
 	var chairsA, chairsB []ChairWithLatLon
-	for _, ride := range rides {
-		if ride.PickupLatitude < 150 {
-			ridesA = append(ridesA, ride)
-		} else {
-			ridesB = append(ridesB, ride)
-		}
-	}
 	for _, chair := range chairs {
 		if chair.Latitude < 150 {
 			chairsA = append(chairsA, chair)
 		} else {
 			chairsB = append(chairsB, chair)
 		}
+	}
+	var ridesA, ridesB []Ride
+	if err := db.SelectContext(ctx, &ridesA, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude < 150 ORDER BY created_at LIMIT ?`, len(chairsA)); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := db.SelectContext(ctx, &ridesB, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude >= 150 ORDER BY created_at LIMIT ?`, len(chairsB)); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if len(ridesA) == 0 && len(ridesB) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 	matchesA := execMatching(ridesA, chairsA)
 	matchesB := execMatching(ridesB, chairsB)
@@ -155,7 +148,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		matchedString += fmt.Sprintf("===========%s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
 		matchedCount += 1
 	}
-	log.Printf("===========internalGetMatching: matches: %d, chairs: %d, rides: %d", matchedCount, len(chairs), len(rides))
+	log.Printf("===========internalGetMatching: matches: %d, chairs: %d, rides: %d", matchedCount, len(chairs), len(ridesA)+len(ridesB))
 	log.Printf(matchedString)
 
 	w.WriteHeader(http.StatusNoContent)
