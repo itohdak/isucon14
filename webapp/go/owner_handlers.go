@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -109,34 +110,48 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	chairs := []Chair{}
-	if err := tx.SelectContext(ctx, &chairs, "SELECT * FROM chairs WHERE owner_id = ?", owner.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
 	res := ownerGetSalesResponse{
 		TotalSales: 0,
 	}
 
+	type Sales struct {
+		ID          string    `db:"id"`
+		OwnerID     string    `db:"owner_id"`
+		Name        string    `db:"name"`
+		Model       string    `db:"model"`
+		IsActive    bool      `db:"is_active"`
+		AccessToken string    `db:"access_token"`
+		CreatedAt   time.Time `db:"created_at"`
+		UpdatedAt   time.Time `db:"updated_at"`
+
+		Sales int `db:"sales"`
+	}
+	query := `SELECT
+	 	c.*,
+		IFNULL(SUM(500 + 100 * (ABS(r.pickup_latitude - r.destination_latitude) + ABS(r.pickup_longitude - r.destination_longitude))), 0) AS sales
+	 FROM chairs c
+	 LEFT JOIN (
+	 	SELECT r.*
+		FROM rides r, ride_statuses rs
+		WHERE r.id = rs.ride_id AND rs.status = 'COMPLETED' AND r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
+	 ) r
+	 ON c.id = r.chair_id AND
+	 	owner_id = ?
+	 GROUP BY c.id`
+	salesSummary := []Sales{}
+	if err := tx.SelectContext(ctx, &salesSummary, query, since, until, owner.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get sales summary: %w", err))
+		return
+	}
 	modelSalesByModel := map[string]int{}
-	for _, chair := range chairs {
-		rides := []Ride{}
-		if err := tx.SelectContext(ctx, &rides, "SELECT rides.* FROM rides JOIN ride_statuses ON rides.id = ride_statuses.ride_id WHERE chair_id = ? AND status = 'COMPLETED' AND updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND", chair.ID, since, until); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		sales := sumSales(rides)
-		res.TotalSales += sales
-
+	for _, sales := range salesSummary {
+		res.TotalSales += sales.Sales
 		res.Chairs = append(res.Chairs, chairSales{
-			ID:    chair.ID,
-			Name:  chair.Name,
-			Sales: sales,
+			ID:    sales.ID,
+			Name:  sales.Name,
+			Sales: sales.Sales,
 		})
-
-		modelSalesByModel[chair.Model] += sales
+		modelSalesByModel[sales.Model] += sales.Sales
 	}
 
 	models := []modelSales{}
