@@ -14,8 +14,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// MEMO: 一旦最も待たせているリクエストに適当な空いている椅子マッチさせる実装とする。おそらくもっといい方法があるはず…
 	rides := []Ride{}
-	numPerBatch := 200
-	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED`, numPerBatch); err != nil {
+	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at FOR UPDATE SKIP LOCKED`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
