@@ -47,6 +47,8 @@ var (
 
 	appNotifications   sync.Map
 	chairNotifications sync.Map
+
+	chairStatsCache sync.Map
 )
 
 var updateCoordinateQueue chan CoordinateToUpdate

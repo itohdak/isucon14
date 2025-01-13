@@ -597,6 +597,16 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, fmt.Errorf("failed to update chair availability to true: chair_id: %s: %w", ride.ChairID, err))
 		return
 	}
+	commitChairStatsCache := func() {
+		statsCached, found := chairStatsCache.Load(ride.ChairID)
+		if !found {
+			return
+		}
+		stats := statsCached.(ChairStats)
+		stats.TotalRideCount += 1
+		stats.TotalEvaluation += int64(req.Evaluation)
+		chairStatsCache.Store(ride.ChairID, stats)
+	}
 
 	rideStatusID := ulid.Make().String()
 	_, err = tx.ExecContext(
@@ -682,6 +692,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	commitChairStatsCache()
 	commitCache()
 	commitRideCache()
 
@@ -839,26 +850,34 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+type ChairStats struct {
+	TotalRideCount  int64 `db:"total_ride_count"`
+	TotalEvaluation int64 `db:"total_evaluation"`
+}
+
 func getChairStats(ctx context.Context, tx *sqlx.Tx, chairID string) (appGetNotificationResponseChairStats, error) {
 	stats := appGetNotificationResponseChairStats{}
 
 	totalRideCount := 0
 	totalEvaluation := 0.0
-	var ret = struct {
-		TotalRideCount  int64 `db:"total_ride_count"`
-		TotalEvaluation int64 `db:"total_evaluation"`
-	}{}
-	if err := tx.GetContext(
-		ctx,
-		&ret,
-		`SELECT IFNULL(COUNT(1), 0) AS total_ride_count, IFNULL(SUM(r1.evaluation), 0) AS total_evaluation FROM rides r1, ride_statuses r2 WHERE r1.id = r2.ride_id AND r2.status = 'COMPLETED' AND r1.chair_id = ?`,
-		chairID,
-	); err != nil {
-		return stats, err
+	var ret = ChairStats{}
+	if statsCached, found := chairStatsCache.Load(chairID); found {
+		stats := statsCached.(ChairStats)
+		totalRideCount = int(stats.TotalRideCount)
+		totalEvaluation = float64(stats.TotalEvaluation)
+	} else {
+		if err := tx.GetContext(
+			ctx,
+			&ret,
+			`SELECT IFNULL(COUNT(1), 0) AS total_ride_count, IFNULL(SUM(r1.evaluation), 0) AS total_evaluation FROM rides r1, ride_statuses r2 WHERE r1.id = r2.ride_id AND r2.status = 'COMPLETED' AND r1.chair_id = ?`,
+			chairID,
+		); err != nil {
+			return stats, err
+		}
+		chairStatsCache.Store(chairID, ret)
+		totalRideCount = int(ret.TotalRideCount)
+		totalEvaluation = float64(ret.TotalEvaluation)
 	}
-	totalRideCount = int(ret.TotalRideCount)
-	totalEvaluation = float64(ret.TotalEvaluation)
-
 	stats.TotalRidesCount = totalRideCount
 	if totalRideCount > 0 {
 		stats.TotalEvaluationAvg = totalEvaluation / float64(totalRideCount)
