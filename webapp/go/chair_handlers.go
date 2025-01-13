@@ -220,8 +220,8 @@ func updateCoordinates() {
 		return
 	}
 
-	now = time.Now()
-	start := now
+	// now = time.Now()
+	// start := now
 	tx, err := db.Beginx()
 	if err != nil {
 		log.Printf("failed to begin transaction: %v", err)
@@ -236,8 +236,8 @@ func updateCoordinates() {
 		log.Printf("failed to insert chair_locations: %v", err)
 		return
 	}
-	log.Printf("insert chair_locations elapsed time: %s", time.Since(now))
-	now = time.Now()
+	// log.Printf("insert chair_locations elapsed time: %s", time.Since(now))
+	// now = time.Now()
 
 	if _, err := tx.NamedExec(
 		`INSERT INTO
@@ -253,16 +253,16 @@ func updateCoordinates() {
 		log.Printf("failed to insert chair_total_distance: %v: coordinates: %v", err, coordinates)
 		return
 	}
-	log.Printf("insert chair_total_distance elapsed time: %s", time.Since(now))
-	now = time.Now()
+	// log.Printf("insert chair_total_distance elapsed time: %s", time.Since(now))
+	// now = time.Now()
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("failed to commit: %v", err)
 		return
 	}
-	log.Printf("commit elapsed time: %s", time.Since(now))
-	log.Printf("max elapsed time: %s", time.Since(coordinates[0].CreatedAt))
-	log.Printf("process elapsed time: %s", time.Since(start))
+	// log.Printf("commit elapsed time: %s", time.Since(now))
+	// log.Printf("max elapsed time: %s", time.Since(coordinates[0].CreatedAt))
+	// log.Printf("process elapsed time: %s", time.Since(start))
 }
 
 type simpleUser struct {
