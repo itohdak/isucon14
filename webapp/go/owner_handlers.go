@@ -111,12 +111,6 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	chairs := []Chair{}
-	if err := tx.SelectContext(ctx, &chairs, "SELECT * FROM chairs WHERE owner_id = ?", owner.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
 	res := ownerGetSalesResponse{
 		TotalSales: 0,
 	}
@@ -136,12 +130,13 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	query := `
 	 SELECT
 	 	c.*,
-	 	SUM(500 + 100 * (ABS(r.pickup_latitude - r.destination_latitude) + ABS(r.pickup_longitude - r.destination_longitude))) AS sales
+	 	IFNULL(SUM(sales), 0) AS sales
 	 FROM
-	 	chairs c, rides r, ride_statuses rs
+	 	chairs c
+	 LEFT JOIN rides r
+	 ON c.id = r.chair_id
 	 WHERE
-	 	c.id = r.chair_id AND r.id = rs.ride_id AND
-		rs.status = 'COMPLETED' AND r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND AND
+		r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND AND
 	 	owner_id = ?
 	 GROUP BY c.id`
 	salesSummary := []Sales{}
@@ -149,23 +144,15 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get sales summary: %w", err))
 		return
 	}
-	salesMap := make(map[string]Sales, len(salesSummary))
-	for _, sales := range salesSummary {
-		salesMap[sales.ID] = sales
-	}
 	modelSalesByModel := map[string]int{}
-	for _, chair := range chairs {
-		actualSales := 0
-		if sales, ok := salesMap[chair.ID]; ok {
-			actualSales = sales.Sales
-		}
-		res.TotalSales += actualSales
+	for _, sales := range salesSummary {
+		res.TotalSales += sales.Sales
 		res.Chairs = append(res.Chairs, chairSales{
-			ID:    chair.ID,
-			Name:  chair.Name,
-			Sales: actualSales,
+			ID:    sales.ID,
+			Name:  sales.Name,
+			Sales: sales.Sales,
 		})
-		modelSalesByModel[chair.Model] += actualSales
+		modelSalesByModel[sales.Model] += sales.Sales
 	}
 
 	models := []modelSales{}

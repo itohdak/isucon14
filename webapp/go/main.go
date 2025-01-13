@@ -273,6 +273,14 @@ ON DUPLICATE KEY UPDATE
 		chairNotifications.Store(chairID, make(chan RideStatus, 10))
 	}
 
+	db.ExecContext(
+		ctx,
+		`UPDATE rides
+		 SET sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude))
+		 WHERE (SELECT COUNT(*) FROM ride_statuses WHERE ride_id = rides.id AND status = 'COMPLETED')`,
+		initialFare, farePerDistance,
+	)
+
 	go func() {
 		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
 			log.Printf("failed to communicate with pprotein: %v", err)

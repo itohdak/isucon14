@@ -1,0 +1,1 @@
+ALTER TABLE rides ADD sales INTEGER DEFAULT 0;

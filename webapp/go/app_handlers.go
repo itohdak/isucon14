@@ -599,6 +599,15 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	_, err = tx.ExecContext(
+		ctx,
+		`UPDATE rides SET sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude)) WHERE id = ?`,
+		initialFare, farePerDistance, rideID,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update ride sales: %w", err))
+		return
+	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
 		if ride.ChairID.Valid {
