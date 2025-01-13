@@ -288,6 +288,22 @@ ON DUPLICATE KEY UPDATE
 		`UPDATE chairs SET is_available = 0 WHERE (SELECT COUNT(*) FROM rides WHERE chair_id = chairs.id AND evaluation IS NULL)`,
 	)
 
+	chairStats := []struct {
+		ChairID string `db:"chair_id"`
+		ChairStats
+	}{}
+	if err := db.SelectContext(
+		ctx,
+		&chairStats,
+		`SELECT r1.chair_id AS chair_id, IFNULL(COUNT(1), 0) AS total_ride_count, IFNULL(SUM(r1.evaluation), 0) AS total_evaluation FROM rides r1, ride_statuses r2 WHERE r1.id = r2.ride_id AND r2.status = 'COMPLETED' GROUP BY r1.chair_id`,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair stats: %v", err))
+		return
+	}
+	for _, chairStat := range chairStats {
+		chairStatsCache.Store(chairStat.ChairID, chairStat.ChairStats)
+	}
+
 	go func() {
 		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
 			log.Printf("failed to communicate with pprotein: %v", err)

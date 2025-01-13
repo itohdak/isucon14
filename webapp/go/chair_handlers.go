@@ -57,6 +57,10 @@ func chairPostChairs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chairNotifications.Store(chairID, make(chan RideStatus, 10))
+	chairStatsCache.Store(chairID, ChairStats{
+		TotalRideCount:  0,
+		TotalEvaluation: 0,
+	})
 
 	http.SetCookie(w, &http.Cookie{
 		Path:  "/",
