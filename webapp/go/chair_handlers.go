@@ -225,14 +225,14 @@ func updateCoordinates() {
 
 	// now = time.Now()
 	// start := now
-	tx, err := db.Beginx()
-	if err != nil {
-		log.Printf("failed to begin transaction: %v", err)
-		return
-	}
-	defer tx.Rollback()
+	// tx, err := db.Beginx()
+	// if err != nil {
+	// 	log.Printf("failed to begin transaction: %v", err)
+	// 	return
+	// }
+	// defer tx.Rollback()
 
-	if _, err := tx.NamedExec(
+	if _, err := db.NamedExec(
 		`INSERT INTO chair_locations (id, chair_id, latitude, longitude, created_at) VALUES (:chair_location_id, :chair_id, :latitude, :longitude, :created_at)`,
 		coordinates,
 	); err != nil {
@@ -242,7 +242,7 @@ func updateCoordinates() {
 	// log.Printf("insert chair_locations elapsed time: %s", time.Since(now))
 	// now = time.Now()
 
-	if _, err := tx.NamedExec(
+	if _, err := db.NamedExec(
 		`INSERT INTO
 			chair_total_distance (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
 		VALUES (:chair_id, 0, :created_at, :latitude, :longitude)
@@ -259,10 +259,10 @@ func updateCoordinates() {
 	// log.Printf("insert chair_total_distance elapsed time: %s", time.Since(now))
 	// now = time.Now()
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("failed to commit: %v", err)
-		return
-	}
+	// if err := tx.Commit(); err != nil {
+	// 	log.Printf("failed to commit: %v", err)
+	// 	return
+	// }
 	// log.Printf("commit elapsed time: %s", time.Since(now))
 	// log.Printf("max elapsed time: %s", time.Since(coordinates[0].CreatedAt))
 	// log.Printf("process elapsed time: %s", time.Since(start))
