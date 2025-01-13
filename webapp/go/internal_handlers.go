@@ -142,7 +142,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		matchedUserID := match.Ride.UserID
 		matchedChairID := match.Chair.ID
 		// log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
-		db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
+		db.ExecContext(ctx, "UPDATE rides SET chair_id = ?, updated_at = ? WHERE id = ?", matchedChairID, time.Now(), matchedRideID)
 		userRideCache.Delete(matchedUserID)
 		chairRideCache.Delete(matchedChairID)
 		rideCache.Delete(matchedRideID)
