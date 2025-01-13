@@ -108,7 +108,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chairRideCache.Delete(matchedChairID)
 		rideCache.Delete(matchedRideID)
 		var rideStatusID string
-		if err := db.GetContext(ctx, &rideStatusID, "SELECT id FROM ride_statuses WHERE ride_id = ?", matchedRideID); err != nil {
+		if err := db.GetContext(ctx, &rideStatusID, "SELECT id FROM ride_statuses WHERE ride_id = ? AND status = ?", matchedRideID, "MATCHING"); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
