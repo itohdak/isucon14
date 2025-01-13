@@ -264,13 +264,13 @@ ON DUPLICATE KEY UPDATE
 		appNotifications.Store(userID, make(chan RideStatus, 10))
 	}
 
-	var rideIDs []string
-	if err := db.SelectContext(ctx, &rideIDs, `SELECT id FROM rides`); err != nil {
+	var chairIDs []string
+	if err := db.SelectContext(ctx, &chairIDs, `SELECT id FROM chairs`); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get ride IDs: %v", err))
 		return
 	}
-	for _, rideID := range rideIDs {
-		chairNotifications.Store(rideID, make(chan RideStatus, 6))
+	for _, chairID := range chairIDs {
+		chairNotifications.Store(chairID, make(chan RideStatus, 10))
 	}
 
 	go func() {
@@ -324,34 +324,34 @@ func secureRandomStr(b int) string {
 	return fmt.Sprintf("%x", k)
 }
 
-func notifyToChannel(userID string, rideStatusID string, rideID string, status string, createChannel bool) (err error) {
+func notifyToChannel(userID string, chairID string, rideStatusID string, rideID string, status string) (err error) {
 	// notification for app
-	appChan, found := appNotifications.Load(userID)
-	if !found {
-		log.Printf("notification channel for app not found: userID: %s", userID)
-		return fmt.Errorf("notification channel for app not found: userID: %s", userID)
+	if userID == "" {
+		appChan, found := appNotifications.Load(userID)
+		if !found {
+			log.Printf("notification channel for app not found: userID: %s", userID)
+			return fmt.Errorf("notification channel for app not found: userID: %s", userID)
+		}
+		appChannel := appChan.(chan RideStatus)
+		appChannel <- RideStatus{
+			ID:     rideStatusID,
+			RideID: rideID,
+			Status: status,
+		}
 	}
-	appChannel := appChan.(chan RideStatus)
-	appChannel <- RideStatus{
-		ID:     rideStatusID,
-		RideID: rideID,
-		Status: status,
-	}
-
 	// notification for chair
-	if createChannel {
-		chairNotifications.Store(rideID, make(chan RideStatus, 6))
-	}
-	chairChan, found := chairNotifications.Load(rideID)
-	if !found {
-		log.Printf("notification channel for chair not found: rideID: %s", rideID)
-		return fmt.Errorf("notification channel for chair not found: rideID: %s", rideID)
-	}
-	chairChannel := chairChan.(chan RideStatus)
-	chairChannel <- RideStatus{
-		ID:     rideStatusID,
-		RideID: rideID,
-		Status: status,
+	if chairID == "" {
+		chairChan, found := chairNotifications.Load(chairID)
+		if !found {
+			log.Printf("notification channel for chair not found: chairID: %s", chairID)
+			return fmt.Errorf("notification channel for chair not found: chairID: %s", chairID)
+		}
+		chairChannel := chairChan.(chan RideStatus)
+		chairChannel <- RideStatus{
+			ID:     rideStatusID,
+			RideID: rideID,
+			Status: status,
+		}
 	}
 	return nil
 }

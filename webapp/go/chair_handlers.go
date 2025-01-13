@@ -56,6 +56,7 @@ func chairPostChairs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	chairNotifications.Store(chairID, make(chan RideStatus, 10))
 
 	http.SetCookie(w, &http.Cookie{
 		Path:  "/",
@@ -158,7 +159,11 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 				}
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "PICKUP")
-					notifyToChannel(ride.UserID, rideStatusID, ride.ID, "PICKUP", false)
+					if ride.ChairID.Valid {
+						notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "PICKUP")
+					} else {
+						log.Printf("chairID is NULL: ride: %v", ride)
+					}
 				}
 			}
 
@@ -170,7 +175,11 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 				}
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "ARRIVED")
-					notifyToChannel(ride.UserID, rideStatusID, ride.ID, "ARRIVED", false)
+					if ride.ChairID.Valid {
+						notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "ARRIVED")
+					} else {
+						log.Printf("chairID is NULL: ride: %v", ride)
+					}
 				}
 			}
 		}
@@ -288,42 +297,43 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	yetSentRideStatus := RideStatus{}
 	status := ""
 
-	if chairRideCached, found := chairRideCache.Load(chair.ID); found {
-		ride = chairRideCached.(*Ride)
-	} else {
-		if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
-					RetryAfterMs: RetryAfterMs,
-				})
+	chairChan, found := chairNotifications.Load(chair.ID)
+	if !found {
+		log.Printf("notification channel for chair not found: chairID: %s", chair.ID)
+	}
+	chairChannel := chairChan.(chan RideStatus)
+	select {
+	case newStatus := <-chairChannel:
+		yetSentRideStatus = newStatus
+		status = yetSentRideStatus.Status
+		if rideCached, found := rideCache.Load(newStatus.RideID); found {
+			ride = rideCached.(*Ride)
+		} else {
+			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? AND id = ?`, chair.ID, newStatus.RideID); err != nil {
+				writeJSON(w, http.StatusInternalServerError, err)
 				return
 			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
 		}
-		chairRideCache.Store(chair.ID, ride)
-	}
-
-	chairChan, found := chairNotifications.Load(ride.ID)
-	if !found {
-		log.Printf("notification channel for chair not found, regarding as completed: rideID: %s", ride.ID)
+	case <-time.After(time.Duration(PollingSec) * time.Second):
+		if chairRideCached, found := chairRideCache.Load(chair.ID); found {
+			ride = chairRideCached.(*Ride)
+		} else {
+			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
+						RetryAfterMs: RetryAfterMs,
+					})
+					return
+				}
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			chairRideCache.Store(chair.ID, ride)
+		}
 		status, err = getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
-		}
-	} else {
-		chairChannel := chairChan.(chan RideStatus)
-		select {
-		case newStatus := <-chairChannel:
-			yetSentRideStatus = newStatus
-			status = yetSentRideStatus.Status
-		case <-time.After(time.Duration(PollingSec) * time.Second):
-			status, err = getLatestRideStatus(ctx, tx, ride.ID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
 		}
 	}
 
@@ -350,9 +360,6 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
-	}
-	if yetSentRideStatus.Status == "COMPLETED" {
-		chairNotifications.Delete(ride.ID)
 	}
 
 	writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
@@ -425,7 +432,11 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "ENROUTE")
-			notifyToChannel(ride.UserID, rideStatusID, ride.ID, "ENROUTE", false)
+			if ride.ChairID.Valid {
+				notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "ENROUTE")
+			} else {
+				log.Printf("chairID is NULL: ride: %v", ride)
+			}
 		}
 	// After Picking up user
 	case "CARRYING":
@@ -445,7 +456,11 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "CARRYING")
-			notifyToChannel(ride.UserID, rideStatusID, ride.ID, "CARRYING", false)
+			if ride.ChairID.Valid {
+				notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "CARRYING")
+			} else {
+				log.Printf("chairID is NULL: ride: %v", ride)
+			}
 		}
 	default:
 		writeError(w, http.StatusBadRequest, errors.New("invalid status"))

@@ -369,7 +369,7 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "MATCHING")
-		notifyToChannel(user.ID, rideStatusID, rideID, "MATCHING", true)
+		notifyToChannel(user.ID, "", rideStatusID, rideID, "MATCHING")
 	}
 
 	var rideCount int
@@ -601,7 +601,11 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
-		notifyToChannel(ride.UserID, rideStatusID, rideID, "COMPLETED", false)
+		if ride.ChairID.Valid {
+			notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, rideID, "COMPLETED")
+		} else {
+			log.Printf("chairID is NULL: ride: %v", ride)
+		}
 	}
 
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
@@ -729,8 +733,8 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case <-time.After(time.Duration(PollingSec) * time.Second):
-		if ride_cached, found := userRideCache.Load(user.ID); found {
-			ride = ride_cached.(*Ride)
+		if userRideCached, found := userRideCache.Load(user.ID); found {
+			ride = userRideCached.(*Ride)
 		} else {
 			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, user.ID); err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
