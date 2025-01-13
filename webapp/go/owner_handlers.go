@@ -104,13 +104,6 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 
 	owner := r.Context().Value("owner").(*Owner)
 
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
-
 	res := ownerGetSalesResponse{
 		TotalSales: 0,
 	}
@@ -134,7 +127,7 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	 WHERE owner_id = ?
 	 GROUP BY c.id`
 	salesSummary := []Sales{}
-	if err := tx.SelectContext(ctx, &salesSummary, query, since, until, owner.ID); err != nil {
+	if err := db.SelectContext(ctx, &salesSummary, query, since, until, owner.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get sales summary: %w", err))
 		return
 	}
