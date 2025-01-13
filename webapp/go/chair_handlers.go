@@ -215,7 +215,7 @@ func updateCoordinates() {
 			break
 		}
 	}
-	log.Printf("dequeued length: %d", len(coordinates))
+	// log.Printf("dequeued length: %d", len(coordinates))
 	if len(coordinates) == 0 {
 		return
 	}
