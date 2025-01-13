@@ -60,9 +60,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	matchedUserIDs := []string{}
-	matchedChairIDs := []string{}
-	matchedRideIDs := []string{}
 	for _, ride := range rides {
 		minDistance := 400
 		var minChair *ChairWithLatLon
@@ -83,9 +80,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			}
 
 			chairs = append(chairs[:minChairIdx], chairs[minChairIdx+1:]...)
-			matchedUserIDs = append(matchedUserIDs, ride.UserID)
-			matchedChairIDs = append(matchedChairIDs, minChair.ID)
-			matchedRideIDs = append(matchedRideIDs, ride.ID)
+			userRideCache.Delete(ride.UserID)
+			chairRideCache.Delete(minChair.ID)
+			rideCache.Delete(ride.ID)
 		}
 	}
 	// ctx := r.Context()
@@ -187,15 +184,15 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	// 	writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to commit in internal matching: %v", err))
 	// 	return
 	// }
-	for _, matchedUserID := range matchedUserIDs {
-		userRideCache.Delete(matchedUserID)
-	}
-	for _, matchedChairID := range matchedChairIDs {
-		chairRideCache.Delete(matchedChairID)
-	}
-	for _, matchedRideID := range matchedRideIDs {
-		rideCache.Delete(matchedRideID)
-	}
+	// for _, matchedUserID := range matchedUserIDs {
+	// 	userRideCache.Delete(matchedUserID)
+	// }
+	// for _, matchedChairID := range matchedChairIDs {
+	// 	chairRideCache.Delete(matchedChairID)
+	// }
+	// for _, matchedRideID := range matchedRideIDs {
+	// 	rideCache.Delete(matchedRideID)
+	// }
 
 	w.WriteHeader(http.StatusNoContent)
 }

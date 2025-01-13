@@ -433,15 +433,11 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ride := &Ride{}
-	if rideCached, found := rideCache.Load(rideID); found {
-		ride = rideCached.(*Ride)
-	} else {
-		if err := tx.GetContext(ctx, ride, "SELECT * FROM rides WHERE id = ?", rideID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		rideCache.Store(rideID, ride)
+	if err := tx.GetContext(ctx, ride, "SELECT * FROM rides WHERE id = ?", rideID); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
 	}
+	rideCache.Store(rideID, ride)
 
 	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, req.PickupCoordinate.Latitude, req.PickupCoordinate.Longitude, req.DestinationCoordinate.Latitude, req.DestinationCoordinate.Longitude)
 	if err != nil {
