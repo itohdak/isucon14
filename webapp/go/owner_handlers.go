@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -176,6 +177,7 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	}
 	res.Models = models
 
+	log.Printf("%w", res)
 	writeJSON(w, http.StatusOK, res)
 }
 
