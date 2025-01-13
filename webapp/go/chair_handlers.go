@@ -262,7 +262,7 @@ func updateCoordinates() {
 	// log.Printf("commit elapsed time: %s", time.Since(now))
 	// log.Printf("max elapsed time: %s", time.Since(coordinates[0].CreatedAt))
 	// log.Printf("process elapsed time: %s", time.Since(start))
-	log.Printf("dequeued length: %d, oldest timestamp duration: %s", len(coordinates), time.Since(coordinates[0].CreatedAt))
+	log.Printf("queue length: %d, dequeued length: %d, oldest timestamp duration: %s", len(updateCoordinateQueue), len(coordinates), time.Since(coordinates[0].CreatedAt))
 }
 
 type simpleUser struct {
