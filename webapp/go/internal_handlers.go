@@ -49,7 +49,7 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 			cost := max((abs(ride.PickupLatitude-chair.Latitude)+
 				abs(ride.PickupLongitude-chair.Longitude)+
 				abs(ride.DestinationLatitude-ride.PickupLatitude)+
-				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*50, 0)
+				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*10, 0)
 			g.AddEdge(i, n+j, 1, cost)
 		}
 	}
