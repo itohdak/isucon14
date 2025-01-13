@@ -58,7 +58,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
  LEFT JOIN chair_latest_status ON chairs.id = chair_latest_status.chair_id
  LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
  WHERE
- 	(chair_latest_status.ride_status = 'COMPLETED' OR chair_latest_status.ride_status IS NULL) AND chairs.is_active`); err != nil {
+ 	(chair_latest_status.ride_status = 'COMPLETED' OR chair_latest_status.ride_status IS NULL) AND chairs.is_active AND chair_latest_location.latitude IS NOT NULL`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
