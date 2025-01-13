@@ -89,7 +89,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			cost := max((abs(ride.PickupLatitude-chair.Latitude)+
 				abs(ride.PickupLongitude-chair.Longitude)+
 				abs(ride.DestinationLatitude-ride.PickupLatitude)+
-				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*10, 0)
+				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*5, 0)
 			g.AddEdge(i, n+j, 1, cost)
 		}
 	}
