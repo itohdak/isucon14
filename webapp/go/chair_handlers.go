@@ -199,7 +199,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 func updateCoordinates() {
 	var coordinates []CoordinateToUpdate
 	var maxLength = 2000
-	var timeout = 30 * time.Millisecond
+	var timeout = 500 * time.Millisecond
 	now := time.Now()
 	for {
 		select {
@@ -215,7 +215,6 @@ func updateCoordinates() {
 			break
 		}
 	}
-	// log.Printf("dequeued length: %d", len(coordinates))
 	if len(coordinates) == 0 {
 		return
 	}
@@ -263,6 +262,7 @@ func updateCoordinates() {
 	// log.Printf("commit elapsed time: %s", time.Since(now))
 	// log.Printf("max elapsed time: %s", time.Since(coordinates[0].CreatedAt))
 	// log.Printf("process elapsed time: %s", time.Since(start))
+	log.Printf("dequeued length: %d, oldest timestamp duration: %s", len(coordinates), time.Since(coordinates[0].CreatedAt))
 }
 
 type simpleUser struct {
