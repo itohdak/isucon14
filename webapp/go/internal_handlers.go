@@ -46,11 +46,15 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 			} else {
 				log.Printf("chair model not found: model name: %s", chair.Model)
 			}
-			cost := max((abs(ride.PickupLatitude-chair.Latitude)+
-				abs(ride.PickupLongitude-chair.Longitude)+
-				abs(ride.DestinationLatitude-ride.PickupLatitude)+
-				abs(ride.DestinationLongitude-ride.PickupLongitude))/model.Speed-int(time.Now().Sub(ride.CreatedAt).Seconds())*10, 0)
-			g.AddEdge(i, n+j, 1, cost)
+			var costReductionSec float64 = 10
+			cost := float64(
+				abs(ride.PickupLatitude-chair.Latitude)+
+					abs(ride.PickupLongitude-chair.Longitude)+
+					abs(ride.DestinationLatitude-ride.PickupLatitude)+
+					abs(ride.DestinationLongitude-ride.PickupLongitude)) /
+				float64(model.Speed) *
+				max(0, (costReductionSec-time.Since(ride.CreatedAt).Seconds())) / costReductionSec
+			g.AddEdge(i, n+j, 1, int(cost))
 		}
 	}
 	g.FlowL(s, t, n)
