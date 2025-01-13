@@ -24,7 +24,7 @@ import (
 
 var db *sqlx.DB
 var RetryAfterMs int = 30
-var PollingSec int = 3
+var PollingSec int = 2
 
 var (
 	latestRideStatusCacheByRideID sync.Map
