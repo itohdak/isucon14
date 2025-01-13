@@ -13,15 +13,9 @@ import (
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// MEMO: 一旦最も待たせているリクエストに適当な空いている椅子マッチさせる実装とする。おそらくもっといい方法があるはず…
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to begin in internal matching: %v", err))
-		return
-	}
-	defer tx.Rollback()
 	rides := []Ride{}
 	numPerBatch := 200
-	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED`, numPerBatch); err != nil {
+	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED`, numPerBatch); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -31,7 +25,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chairs := []Chair{}
-	if err := tx.SelectContext(
+	if err := db.SelectContext(
 		ctx,
 		&chairs,
 		`SELECT * FROM chairs INNER JOIN (SELECT id FROM chairs WHERE (SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = chairs.id) GROUP BY ride_id) is_completed WHERE completed = FALSE) AND is_active = TRUE ORDER BY RAND()) AS tmp ON chairs.id = tmp.id FOR UPDATE SKIP LOCKED`); err != nil {
@@ -55,7 +49,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to prepare in query: %v", err))
 		return
 	}
-	err = tx.SelectContext(ctx, &locations, query, param...)
+	err = db.SelectContext(ctx, &locations, query, param...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to exec in query: %v", err))
 		return
@@ -89,9 +83,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	g.FlowL(s, t, n)
 	edges := g.Edges()
-	matchedUserIDs := []string{}
-	matchedChairIDs := []string{}
-	matchedRideIDs := []string{}
 	for _, e := range edges {
 		if e.from == s || e.to == t || e.flow == 0 {
 			continue
@@ -100,23 +91,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		matchedUserID := rides[e.from].UserID
 		matchedChairID := locations[e.to-n].ChairID
 		log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
-		tx.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
-		matchedUserIDs = append(matchedUserIDs, matchedUserID)
-		matchedChairIDs = append(matchedChairIDs, matchedChairID)
-		matchedRideIDs = append(matchedRideIDs, matchedRideID)
-	}
-
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to commit in internal matching: %v", err))
-		return
-	}
-	for _, matchedUserID := range matchedUserIDs {
+		db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", matchedChairID, matchedRideID)
 		userRideCache.Delete(matchedUserID)
-	}
-	for _, matchedChairID := range matchedChairIDs {
 		chairRideCache.Delete(matchedChairID)
-	}
-	for _, matchedRideID := range matchedRideIDs {
 		rideCache.Delete(matchedRideID)
 	}
 
