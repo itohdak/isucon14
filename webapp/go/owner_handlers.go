@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -115,17 +114,20 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 		Sales int    `db:"sales"`
 	}
 	query := `
-	 SELECT
-	 	c.id AS id,
+	SELECT
+		c.id AS id,
 		c.name AS name,
 		c.model AS model,
-	 	IFNULL(SUM(sales), 0) AS sales
-	 FROM
-	 	chairs c
-	 LEFT JOIN rides r
-	 ON c.id = r.chair_id AND r.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
-	 WHERE owner_id = ?
-	 GROUP BY c.id`
+		IFNULL(SUM(sales), 0) AS sales
+	FROM
+		chairs c
+		LEFT JOIN rides r ON c.id = r.chair_id
+		AND r.updated_at BETWEEN ?
+		AND ? + INTERVAL 999 MICROSECOND
+	WHERE
+		owner_id = ?
+	GROUP BY
+		c.id`
 	salesSummary := []Sales{}
 	if err := db.SelectContext(ctx, &salesSummary, query, since, until, owner.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get sales summary: %w", err))
@@ -151,7 +153,6 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	}
 	res.Models = models
 
-	log.Printf("%w", res)
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -199,19 +200,23 @@ func ownerGetChairs(w http.ResponseWriter, r *http.Request) {
 	owner := ctx.Value("owner").(*Owner)
 
 	chairs := []chairWithDetail{}
-	if err := db.SelectContext(ctx, &chairs, `SELECT id,
-       owner_id,
-       name,
-       access_token,
-       model,
-       is_active,
-       created_at,
-       updated_at,
-       IFNULL(total_distance, 0) AS total_distance,
-       latest_timestamp AS total_distance_updated_at
-FROM chairs LEFT JOIN chair_total_distance ON chairs.id = chair_total_distance.chair_id
-WHERE owner_id = ?
-`, owner.ID); err != nil {
+	if err := db.SelectContext(ctx, &chairs, `
+	SELECT
+		id,
+		owner_id,
+		name,
+		access_token,
+		model,
+		is_active,
+		created_at,
+		updated_at,
+		IFNULL(total_distance, 0) AS total_distance,
+		latest_timestamp AS total_distance_updated_at
+	FROM
+		chairs
+		LEFT JOIN chair_total_distance ON chairs.id = chair_total_distance.chair_id
+	WHERE
+		owner_id = ?`, owner.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
