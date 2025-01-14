@@ -213,7 +213,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select ride_statuses: rideIDs: %s: %w", rideIDs, err))
 		return
 	}
-	var rideStatusMap map[string]string
+	var rideStatusMap = make(map[string]string, len(rideStatuses))
 	for _, rideStatus := range rideStatuses {
 		rideStatusMap[rideStatus.RideID] = rideStatus.ID
 	}
