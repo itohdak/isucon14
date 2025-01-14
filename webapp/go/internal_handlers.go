@@ -79,8 +79,8 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Select(&chairs, `
 	SELECT
 		chairs.*,
-		chair_latest_location.latest_latitude,
-		chair_latest_location.latest_longitude
+		chair_latest_location.latest_latitude AS latitude,
+		chair_latest_location.latest_longitude AS longitude
 	FROM
 		chairs
 		LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
