@@ -66,7 +66,16 @@ var (
 var (
 	appNotifications   sync.Map
 	chairNotifications sync.Map
+
+	channelSize int = 10
 )
+
+func createNewChannelForUser(userID string) {
+	appNotifications.Store(userID, make(chan RideStatus, channelSize))
+}
+func createNewChannelForChair(chairID string) {
+	chairNotifications.Store(chairID, make(chan RideStatus, channelSize))
+}
 
 type CoordinateToUpdate struct {
 	ChairLocationID string    `db:"chair_location_id"`
@@ -354,7 +363,7 @@ func prepareNotification(ctx context.Context) error {
 		return fmt.Errorf("failed to get user IDs: %w", err)
 	}
 	for _, userID := range userIDs {
-		appNotifications.Store(userID, make(chan RideStatus, 10))
+		createNewChannelForUser(userID)
 	}
 
 	// create channel for chair notification
@@ -363,7 +372,7 @@ func prepareNotification(ctx context.Context) error {
 		return fmt.Errorf("failed to get ride IDs: %w", err)
 	}
 	for _, chairID := range chairIDs {
-		chairNotifications.Store(chairID, make(chan RideStatus, 10))
+		createNewChannelForChair(chairID)
 	}
 
 	return nil

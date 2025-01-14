@@ -56,7 +56,9 @@ func chairPostChairs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	chairNotifications.Store(chairID, make(chan RideStatus, 10))
+
+	// commit locals
+	createNewChannelForChair(chairID)
 	chairStatsCache.Store(chairID, ChairStats{
 		TotalRideCount:  0,
 		TotalEvaluation: 0,
@@ -93,6 +95,8 @@ func chairPostActivity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	// commit locals
 	accessToken, _ := chairIDAccessTokenMap.Load(chair.ID)
 	chairAccessTokenCache.Delete(accessToken)
 	chairCache.Delete(chair.ID)
@@ -122,7 +126,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	createdAt := time.Now()
-	// time.Sleep(30 * time.Millisecond)
+	// enqueue coordinates for bulk insert/update
 	updateCoordinateQueue <- CoordinateToUpdate{
 		ChairLocationID: ulid.Make().String(),
 		ChairID:         chair.ID,
@@ -133,22 +137,12 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 
 	commitCache := func() {}
 	ride := &Ride{}
-	rideExists := false
-	if chairRideCached, found := chairRideCache.Load(chair.ID); found {
-		ride = chairRideCached.(*Ride)
-		rideExists = true
-	} else {
-		if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-		} else {
-			rideExists = true
-			chairRideCache.Store(chair.ID, ride)
+	if ride, err = getChairRideCache(ctx, tx, chair.ID); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
-	}
-	if rideExists {
+	} else { // ride exists
 		status, err := getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -193,6 +187,8 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	// commit locals
 	commitCache()
 
 	writeJSON(w, http.StatusOK, &chairPostCoordinateResponse{
@@ -223,24 +219,13 @@ func updateCoordinates() {
 		return
 	}
 
-	// now = time.Now()
-	// start := now
-	// tx, err := db.Beginx()
-	// if err != nil {
-	// 	log.Printf("failed to begin transaction: %v", err)
-	// 	return
-	// }
-	// defer tx.Rollback()
-
 	if _, err := db.NamedExec(
 		`INSERT INTO chair_locations (id, chair_id, latitude, longitude, created_at) VALUES (:chair_location_id, :chair_id, :latitude, :longitude, :created_at)`,
 		coordinates,
 	); err != nil {
-		log.Printf("failed to insert chair_locations: %v", err)
+		log.Printf("[ERROR] failed to insert into chair_locations: %w", err)
 		return
 	}
-	// log.Printf("insert chair_locations elapsed time: %s", time.Since(now))
-	// now = time.Now()
 
 	if _, err := db.NamedExec(
 		`INSERT INTO
@@ -253,20 +238,10 @@ func updateCoordinates() {
 			latest_longitude = VALUES(latest_longitude)`,
 		coordinates,
 	); err != nil {
-		log.Printf("failed to insert chair_total_distance: %v: coordinates: %v", err, coordinates)
+		log.Printf("[ERROR] failed to insert into chair_total_distance: %w: coordinates: %v", err, coordinates)
 		return
 	}
-	// log.Printf("insert chair_total_distance elapsed time: %s", time.Since(now))
-	// now = time.Now()
-
-	// if err := tx.Commit(); err != nil {
-	// 	log.Printf("failed to commit: %v", err)
-	// 	return
-	// }
-	// log.Printf("commit elapsed time: %s", time.Since(now))
-	// log.Printf("max elapsed time: %s", time.Since(coordinates[0].CreatedAt))
-	// log.Printf("process elapsed time: %s", time.Since(start))
-	log.Printf("queue length: %d, dequeued length: %d, oldest timestamp duration: %s", len(updateCoordinateQueue), len(coordinates), time.Since(coordinates[0].CreatedAt))
+	log.Printf("[INFO] queue length: %d, dequeued length: %d, oldest timestamp duration: %s", len(updateCoordinateQueue), len(coordinates), time.Since(coordinates[0].CreatedAt))
 }
 
 type simpleUser struct {
@@ -303,36 +278,28 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 
 	chairChan, found := chairNotifications.Load(chair.ID)
 	if !found {
-		log.Printf("notification channel for chair not found: chairID: %s", chair.ID)
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("notification channel for chair not found: chairID: %s", chair.ID))
+		return
 	}
 	chairChannel := chairChan.(chan RideStatus)
 	select {
 	case newStatus := <-chairChannel:
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
-		if rideCached, found := rideCache.Load(newStatus.RideID); found {
-			ride = rideCached.(*Ride)
-		} else {
-			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? AND id = ?`, chair.ID, newStatus.RideID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, err)
-				return
-			}
+		if ride, err = getRideCache(ctx, tx, newStatus.RideID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
 	case <-time.After(time.Duration(PollingSec) * time.Second):
-		if chairRideCached, found := chairRideCache.Load(chair.ID); found {
-			ride = chairRideCached.(*Ride)
-		} else {
-			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
-						RetryAfterMs: RetryAfterMs,
-					})
-					return
-				}
-				writeError(w, http.StatusInternalServerError, err)
+		if ride, err = getChairRideCache(ctx, tx, chair.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
+					RetryAfterMs: RetryAfterMs,
+				})
 				return
 			}
-			chairRideCache.Store(chair.ID, ride)
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
 		status, err = getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
@@ -342,15 +309,9 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := &User{}
-	if userCached, found := userCache.Load(ride.UserID); found {
-		user = userCached.(*User)
-	} else {
-		err = tx.GetContext(ctx, user, "SELECT * FROM users WHERE id = ? FOR SHARE", ride.UserID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		userCache.Store(ride.UserID, user)
+	if user, err = getUserCache(ctx, tx, ride.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get user in chairGetNotification: %w", err))
+		return
 	}
 
 	if yetSentRideStatus.ID != "" {
@@ -436,11 +397,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "ENROUTE")
-			if ride.ChairID.Valid {
-				notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "ENROUTE")
-			} else {
-				log.Printf("chairID is NULL: ride: %v", ride)
-			}
+			notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "ENROUTE")
 		}
 	// After Picking up user
 	case "CARRYING":
@@ -460,11 +417,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "CARRYING")
-			if ride.ChairID.Valid {
-				notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "CARRYING")
-			} else {
-				log.Printf("chairID is NULL: ride: %v", ride)
-			}
+			notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "CARRYING")
 		}
 	default:
 		writeError(w, http.StatusBadRequest, errors.New("invalid status"))
@@ -474,6 +427,8 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	// commit locals
 	commitCache()
 
 	w.WriteHeader(http.StatusNoContent)

@@ -124,7 +124,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// commit locals
-	appNotifications.Store(userID, make(chan RideStatus, 10))
+	createNewChannelForUser(userID)
 
 	http.SetCookie(w, &http.Cookie{
 		Path:  "/",
@@ -441,6 +441,8 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	// commit locals
 	commitCache()
 
 	writeJSON(w, http.StatusAccepted, &appPostRidesResponse{
@@ -673,6 +675,8 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	// commit locals
 	commitChairStatsCache()
 	commitCache()
 	commitRideCache()

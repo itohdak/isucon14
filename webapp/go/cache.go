@@ -7,6 +7,18 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+func getUserCache(ctx context.Context, tx *sqlx.Tx, userID string) (user *User, err error) {
+	if userCached, found := userCache.Load(userID); found {
+		user = userCached.(*User)
+		return user, nil
+	}
+	if err = tx.GetContext(ctx, user, "SELECT * FROM users WHERE id = ? FOR SHARE", userID); err != nil {
+		return user, fmt.Errorf("failed to get user in getUserCache: userID: %s: %w", userID, err)
+	}
+	userCache.Store(userID, user)
+	return user, nil
+}
+
 func getChairCache(ctx context.Context, tx *sqlx.Tx, chairID string) (chair *Chair, err error) {
 	if chairCached, found := chairCache.Load(chairID); found {
 		chair = chairCached.(*Chair)
@@ -53,6 +65,18 @@ func getUserRideCache(ctx context.Context, tx *sqlx.Tx, userID string) (ride *Ri
 		return ride, err
 	}
 	userRideCache.Store(userID, ride)
+	return ride, nil
+}
+
+func getChairRideCache(ctx context.Context, tx *sqlx.Tx, chairID string) (ride *Ride, err error) {
+	if chairRideCached, found := chairRideCache.Load(chairID); found {
+		ride = chairRideCached.(*Ride)
+		return ride, nil
+	}
+	if err = tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chairID); err != nil {
+		return ride, err
+	}
+	chairRideCache.Store(chairID, ride)
 	return ride, nil
 }
 
