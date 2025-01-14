@@ -8,6 +8,7 @@ import (
 )
 
 func getUserCache(ctx context.Context, tx *sqlx.Tx, userID string) (user *User, err error) {
+	user = &User{}
 	if userCached, found := userCache.Load(userID); found {
 		user = userCached.(*User)
 		return user, nil
@@ -20,6 +21,7 @@ func getUserCache(ctx context.Context, tx *sqlx.Tx, userID string) (user *User, 
 }
 
 func getChairCache(ctx context.Context, tx *sqlx.Tx, chairID string) (chair *Chair, err error) {
+	chair = &Chair{}
 	if chairCached, found := chairCache.Load(chairID); found {
 		chair = chairCached.(*Chair)
 		return chair, nil
@@ -32,6 +34,7 @@ func getChairCache(ctx context.Context, tx *sqlx.Tx, chairID string) (chair *Cha
 }
 
 func getLatestRideStatusCache(ctx context.Context, tx executableGet, rideID string) (rideStatus string, err error) {
+	rideStatus = ""
 	if rideStatusCached, found := latestRideStatusCacheByRideID.Load(rideID); found {
 		rideStatus = rideStatusCached.(string)
 		return rideStatus, nil
@@ -44,6 +47,7 @@ func getLatestRideStatusCache(ctx context.Context, tx executableGet, rideID stri
 }
 
 func getRideCache(ctx context.Context, tx *sqlx.Tx, rideID string) (ride *Ride, err error) {
+	ride = &Ride{}
 	if rideCached, found := rideCache.Load(rideID); found {
 		ride = rideCached.(*Ride)
 		return ride, nil
@@ -57,6 +61,7 @@ func getRideCache(ctx context.Context, tx *sqlx.Tx, rideID string) (ride *Ride, 
 }
 
 func getUserRideCache(ctx context.Context, tx *sqlx.Tx, userID string) (ride *Ride, err error) {
+	ride = &Ride{}
 	if userRideCached, found := userRideCache.Load(userID); found {
 		ride = userRideCached.(*Ride)
 		return ride, nil
@@ -69,6 +74,7 @@ func getUserRideCache(ctx context.Context, tx *sqlx.Tx, userID string) (ride *Ri
 }
 
 func getChairRideCache(ctx context.Context, tx *sqlx.Tx, chairID string) (ride *Ride, err error) {
+	ride = &Ride{}
 	if chairRideCached, found := chairRideCache.Load(chairID); found {
 		ride = chairRideCached.(*Ride)
 		return ride, nil
@@ -81,6 +87,7 @@ func getChairRideCache(ctx context.Context, tx *sqlx.Tx, chairID string) (ride *
 }
 
 func getChairStatsCache(ctx context.Context, tx *sqlx.Tx, chairID string) (stats ChairStats, err error) {
+	stats = ChairStats{}
 	if statsCached, found := chairStatsCache.Load(chairID); found {
 		stats = statsCached.(ChairStats)
 		return stats, nil
@@ -98,6 +105,7 @@ func getChairStatsCache(ctx context.Context, tx *sqlx.Tx, chairID string) (stats
 }
 
 func getRideCouponCache(ctx context.Context, tx *sqlx.Tx, rideID string) (coupon Coupon, err error) {
+	coupon = Coupon{}
 	if rideCouponCached, found := rideCouponCache.Load(rideID); found {
 		coupon = rideCouponCached.(Coupon)
 		return coupon, nil
@@ -110,6 +118,7 @@ func getRideCouponCache(ctx context.Context, tx *sqlx.Tx, rideID string) (coupon
 }
 
 func getUserCacheByAccessToken(ctx context.Context, accessToken string) (user *User, err error) {
+	user = &User{}
 	if userCached, found := userAccessTokenCache.Load(accessToken); found {
 		user = userCached.(*User)
 		return user, nil
@@ -123,6 +132,7 @@ func getUserCacheByAccessToken(ctx context.Context, accessToken string) (user *U
 }
 
 func getOwnerCacheByAccessToken(ctx context.Context, accessToken string) (owner *Owner, err error) {
+	owner = &Owner{}
 	if ownerCached, found := ownerAccessTokenCache.Load(accessToken); found {
 		owner = ownerCached.(*Owner)
 		return owner, nil
@@ -136,6 +146,7 @@ func getOwnerCacheByAccessToken(ctx context.Context, accessToken string) (owner 
 }
 
 func getChairCacheByAccessToken(ctx context.Context, accessToken string) (chair *Chair, err error) {
+	chair = &Chair{}
 	if chairCached, found := chairAccessTokenCache.Load(accessToken); found {
 		chair = chairCached.(*Chair)
 		return chair, nil
