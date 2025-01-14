@@ -177,7 +177,14 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	chairIDsString := strings.Join(chairIDs, ",")
 	rideIDsString := strings.Join(rideIDs, ",")
 
-	if _, err := db.ExecContext(
+	tx, err := db.Beginx()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(
 		ctx,
 		"UPDATE rides SET chair_id = ELT(FIELD(id, ?), ?), updated_at = ? WHERE id IN (?)",
 		rideIDsString,
@@ -189,7 +196,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := db.ExecContext(
+	if _, err := tx.ExecContext(
 		ctx,
 		"UPDATE chairs SET is_available = ? WHERE id IN (?)",
 		true,
@@ -200,10 +207,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var rideStatuses []RideStatus
-	if err := db.SelectContext(
+	if err := tx.SelectContext(
 		ctx,
 		&rideStatuses,
-		"SELECT id, ride_id FROM ride_statuses WHERE ride_id IN (?) AND status = ?",
+		"SELECT id, ride_id FROM ride_statuses WHERE ride_id IN (?) AND status = ? FOR SHARE",
 		rideIDsString,
 		"MATCHING",
 	); err != nil {
@@ -214,6 +221,12 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	for _, rideStatus := range rideStatuses {
 		rideStatusMap[rideStatus.RideID] = rideStatus.ID
 	}
+
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	matchedString := "[internal_matcher] chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
 	for _, match := range matches {
 		matchedRideID := match.Ride.ID
