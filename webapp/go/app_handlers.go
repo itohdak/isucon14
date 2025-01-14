@@ -906,7 +906,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			latest_latitude AS latitude,
 			latest_longitude AS longitude
 		FROM
-			chairs, chair_total_distance
+			chairs, chair_latest_location
 		WHERE
 			is_active = TRUE
 			AND is_available = TRUE

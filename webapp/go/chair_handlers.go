@@ -227,7 +227,7 @@ func updateCoordinates() {
 
 	if _, err := db.NamedExec(
 		`INSERT INTO
-			chair_total_distance (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
+			chair_latest_location (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
 		VALUES (:chair_id, 0, :created_at, :latitude, :longitude)
 		ON DUPLICATE KEY UPDATE
 			total_distance = total_distance + ABS(latest_latitude - VALUES(latest_latitude)) + ABS(latest_longitude - VALUES(latest_longitude)),
@@ -236,7 +236,7 @@ func updateCoordinates() {
 			latest_longitude = VALUES(latest_longitude)`,
 		coordinates,
 	); err != nil {
-		log.Printf("[ERROR] failed to insert into chair_total_distance: %w: coordinates: %v", err, coordinates)
+		log.Printf("[ERROR] failed to insert into chair_latest_location: %w: coordinates: %v", err, coordinates)
 		return
 	}
 	log.Printf("[INFO] queue length: %d, dequeued length: %d, oldest timestamp duration: %s", len(updateCoordinateQueue), len(coordinates), time.Since(coordinates[0].CreatedAt))

@@ -264,10 +264,10 @@ func prepare(ctx context.Context) error {
 		return fmt.Errorf("failed to update is_available in chairs: %w", err)
 	}
 
-	// store chair latest distance/location into chair_total_distance
+	// store chair latest distance/location into chair_latest_location
 	if _, err := db.ExecContext(ctx, `
 	INSERT INTO
-		chair_total_distance(
+		chair_latest_location(
 			chair_id,
 			total_distance,
 			latest_timestamp,

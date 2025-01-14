@@ -77,35 +77,17 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	chairs := []ChairWithLatLon{}
 	if err := tx.Select(&chairs, `
-	WITH chair_latest_location AS (
-		SELECT
-			*
-		FROM
-			(
-				SELECT
-					chair_locations.*,
-					ROW_NUMBER() OVER (
-						PARTITION BY chair_id
-						ORDER BY
-							created_at DESC
-					) AS rn
-				FROM
-					chair_locations
-			) c
-		WHERE
-			c.rn = 1
-	)
 	SELECT
 		chairs.*,
-		chair_latest_location.latitude,
-		chair_latest_location.longitude
+		chair_latest_location.latest_latitude,
+		chair_latest_location.latest_longitude
 	FROM
 		chairs
 		LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
 	WHERE
 		chairs.is_available
 		AND chairs.is_active
-		AND chair_latest_location.latitude IS NOT NULL`); err != nil {
+		AND chair_latest_location.latest_latitude IS NOT NULL`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
