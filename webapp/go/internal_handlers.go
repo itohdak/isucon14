@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 const costReductionSec float64 = 30
@@ -174,8 +175,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chairIDs = append(chairIDs, match.Chair.ID)
 		rideIDs = append(rideIDs, match.Ride.ID)
 	}
-	chairIDsString := strings.Join(chairIDs, ",")
-	rideIDsString := strings.Join(rideIDs, ",")
 
 	tx, err := db.Beginx()
 	if err != nil {
@@ -184,37 +183,34 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(
-		ctx,
-		"UPDATE rides SET chair_id = ELT(FIELD(id, ?), ?), updated_at = ? WHERE id IN (?)",
-		rideIDsString,
-		chairIDsString,
-		time.Now(),
-		rideIDsString,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update rides: rideIDsString: %s chairIDsString: %s: %w", rideIDsString, chairIDsString, err))
+	query := "UPDATE rides SET chair_id = ELT(FIELD(id, :rideIDs), :chairIDs), updated_at = :updatedAt WHERE id IN (:rideIDs)"
+	query, params, err := sqlx.Named(query, map[string]interface{}{
+		"rideIDs":   rideIDs,
+		"chairIDs":  chairIDs,
+		"updatedAt": time.Now(),
+	})
+	query, params, err = sqlx.In(query, params...)
+	if _, err := tx.ExecContext(ctx, query, params...); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update rides: rideIDs: %s chairIDs: %s: %w", rideIDs, chairIDs, err))
 		return
 	}
 
-	if _, err := tx.ExecContext(
-		ctx,
-		"UPDATE chairs SET is_available = ? WHERE id IN (?)",
-		true,
-		chairIDsString,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update chairs: chairIDsString: %s: %w", chairIDsString, err))
+	query = "UPDATE chairs SET is_available = :isAvailable WHERE id IN (:chairIDs)"
+	query, params, err = sqlx.Named(query, map[string]interface{}{
+		"isAvailable": true,
+		"chairIDs":    chairIDs,
+	})
+	query, params, err = sqlx.In(query, params...)
+	if _, err := tx.ExecContext(ctx, query, params...); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update chairs: chairIDs: %s: %w", chairIDs, err))
 		return
 	}
 
+	query = "SELECT id, ride_id FROM ride_statuses WHERE ride_id IN (?) AND status = 'MATCHING' FOR SHARE"
+	query, params, err = sqlx.In(query, rideIDs)
 	var rideStatuses []RideStatus
-	if err := tx.SelectContext(
-		ctx,
-		&rideStatuses,
-		"SELECT id, ride_id FROM ride_statuses WHERE ride_id IN (?) AND status = ? FOR SHARE",
-		rideIDsString,
-		"MATCHING",
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select ride_statuses: rideIDsString: %s: %w", rideIDsString, err))
+	if err := tx.SelectContext(ctx, &rideStatuses, query, params...); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select ride_statuses: rideIDs: %s: %w", rideIDs, err))
 		return
 	}
 	var rideStatusMap map[string]string
