@@ -8,19 +8,7 @@ import (
 	"time"
 )
 
-type ChairWithLatLon struct {
-	ID          string    `db:"id"`
-	OwnerID     string    `db:"owner_id"`
-	Name        string    `db:"name"`
-	Model       string    `db:"model"`
-	IsActive    bool      `db:"is_active"`
-	AccessToken string    `db:"access_token"`
-	CreatedAt   time.Time `db:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at"`
-
-	Latitude  int `db:"latitude"`
-	Longitude int `db:"longitude"`
-}
+const costReductionSec float64 = 30
 
 type MatchingResult struct {
 	Chair ChairWithLatLon
@@ -48,9 +36,8 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 			if modelCached, found := chairModelCache.Load(chair.Model); found {
 				model = modelCached.(ChairModel)
 			} else {
-				log.Printf("chair model not found: model name: %s", chair.Model)
+				log.Printf("[WARN] chair model not found: model name: %s", chair.Model)
 			}
-			var costReductionSec float64 = 30
 			cost := float64(
 				abs(ride.PickupLatitude-chair.Latitude)+
 					abs(ride.PickupLongitude-chair.Longitude)+
@@ -76,34 +63,64 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 	return matches
 }
 
-// このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	chairs := []ChairWithLatLon{}
 	if err := db.Select(&chairs, `
- WITH chair_latest_location AS (
- 	SELECT *
- 	FROM (
- 		SELECT chair_locations.*, ROW_NUMBER() OVER (PARTITION BY chair_id ORDER BY created_at DESC) AS rn
- 		FROM chair_locations
- 	) c
- 	WHERE c.rn = 1
- ),
- chair_latest_status AS (
- 	SELECT *
- 	FROM (
- 		SELECT rides.*, ride_statuses.status AS ride_status, ROW_NUMBER() OVER (PARTITION BY chair_id ORDER BY ride_statuses.created_at DESC) AS rn
- 		FROM rides INNER JOIN ride_statuses ON rides.id = ride_statuses.ride_id AND ride_statuses.chair_sent_at IS NOT NULL -- この条件は椅子の通知エンドポイントの実装で、未送信の状態がある2つ以上の異なるライドが割り当てられていても正しく順番に送るように修正していれば不要
- 	) r
- 	WHERE r.rn = 1
- )
- SELECT
- 	chairs.*, chair_latest_location.latitude, chair_latest_location.longitude
- FROM chairs
- LEFT JOIN chair_latest_status ON chairs.id = chair_latest_status.chair_id
- LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
- WHERE
- 	(chair_latest_status.ride_status = 'COMPLETED' OR chair_latest_status.ride_status IS NULL) AND chairs.is_active AND chair_latest_location.latitude IS NOT NULL`); err != nil {
+	WITH chair_latest_location AS (
+		SELECT
+			*
+		FROM
+			(
+				SELECT
+					chair_locations.*,
+					ROW_NUMBER() OVER (
+						PARTITION BY chair_id
+						ORDER BY
+							created_at DESC
+					) AS rn
+				FROM
+					chair_locations
+			) c
+		WHERE
+			c.rn = 1
+	),
+	chair_latest_status AS (
+		SELECT
+			*
+		FROM
+			(
+				SELECT
+					rides.*,
+					ride_statuses.status AS ride_status,
+					ROW_NUMBER() OVER (
+						PARTITION BY chair_id
+						ORDER BY
+							ride_statuses.created_at DESC
+					) AS rn
+				FROM
+					rides
+					INNER JOIN ride_statuses ON rides.id = ride_statuses.ride_id
+					AND ride_statuses.chair_sent_at IS NOT NULL -- この条件は椅子の通知エンドポイントの実装で、未送信の状態がある2つ以上の異なるライドが割り当てられていても正しく順番に送るように修正していれば不要
+			) r
+		WHERE
+			r.rn = 1
+	)
+	SELECT
+		chairs.*,
+		chair_latest_location.latitude,
+		chair_latest_location.longitude
+	FROM
+		chairs
+		LEFT JOIN chair_latest_status ON chairs.id = chair_latest_status.chair_id
+		LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
+	WHERE
+		(
+			chair_latest_status.ride_status = 'COMPLETED'
+			OR chair_latest_status.ride_status IS NULL
+		)
+		AND chairs.is_active
+		AND chair_latest_location.latitude IS NOT NULL`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -111,6 +128,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+
+	// there're 2 areas
+	// matching heuristically
 	var chairsA, chairsB []ChairWithLatLon
 	for _, chair := range chairs {
 		if chair.Latitude < 150 {
@@ -147,31 +167,38 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	matches := append(matchesA, matchesB...)
 
-	matchedString := "===========chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
-	matchedCount := 0
+	matchedString := "[internal_matcher] chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
 	for _, match := range matches {
 		matchedRideID := match.Ride.ID
 		matchedUserID := match.Ride.UserID
 		matchedChairID := match.Chair.ID
-		// log.Printf("matched ride %s with chair %s\n", matchedChairID, matchedRideID)
-		db.ExecContext(ctx, "UPDATE rides SET chair_id = ?, updated_at = ? WHERE id = ?", matchedChairID, time.Now(), matchedRideID)
+
+		if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ?, updated_at = ? WHERE id = ?", matchedChairID, time.Now(), matchedRideID); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update rides: ride_id: %s chair_id: %s: %w", matchedRideID, matchedChairID, err))
+			return
+		}
 		if _, err := db.ExecContext(ctx, "UPDATE chairs SET is_available = ? WHERE id = ?", false, matchedChairID); err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update chair availability to false: chair_id: %s: %w", matchedChairID, err))
 			return
 		}
+
+		// commit locals
 		userRideCache.Delete(matchedUserID)
 		chairRideCache.Delete(matchedChairID)
 		rideCache.Delete(matchedRideID)
+
 		var rideStatusID string
 		if err := db.GetContext(ctx, &rideStatusID, "SELECT id FROM ride_statuses WHERE ride_id = ? AND status = ?", matchedRideID, "MATCHING"); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+
+		// commit locals
 		notifyToChannel("", matchedChairID, rideStatusID, matchedRideID, "MATCHING")
-		matchedString += fmt.Sprintf("===========%s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
-		matchedCount += 1
+
+		matchedString += fmt.Sprintf("[internal_matcher] %s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
 	}
-	log.Printf("===========internalGetMatching: matches: %d, chairs: %d, rides: %d", matchedCount, len(chairs), len(ridesA)+len(ridesB))
+	log.Printf("[internal_matcher] internalGetMatching: matches: %d, chairs: %d, rides: %d", len(matches), len(chairs), len(ridesA)+len(ridesB))
 	log.Printf(matchedString)
 
 	w.WriteHeader(http.StatusNoContent)
