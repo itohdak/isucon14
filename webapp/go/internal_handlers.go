@@ -67,8 +67,16 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	tx, err := db.Beginx()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer tx.Rollback()
+
 	chairs := []ChairWithLatLon{}
-	if err := db.Select(&chairs, `
+	if err := tx.Select(&chairs, `
 	WITH chair_latest_location AS (
 		SELECT
 			*
@@ -142,11 +150,11 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var ridesA, ridesB []Ride
-	if err := db.SelectContext(ctx, &ridesA, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude < 150 ORDER BY created_at LIMIT ?`, len(chairsA)); err != nil {
+	if err := tx.SelectContext(ctx, &ridesA, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude < 150 ORDER BY created_at LIMIT ?`, len(chairsA)); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if err := db.SelectContext(ctx, &ridesB, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude >= 150 ORDER BY created_at LIMIT ?`, len(chairsB)); err != nil {
+	if err := tx.SelectContext(ctx, &ridesB, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude >= 150 ORDER BY created_at LIMIT ?`, len(chairsB)); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -175,13 +183,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chairIDs = append(chairIDs, match.Chair.ID)
 		rideIDs = append(rideIDs, match.Ride.ID)
 	}
-
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
 
 	query := "UPDATE rides SET chair_id = ELT(FIELD(id, :rideIDs), :chairIDs), updated_at = :updatedAt WHERE id IN (:rideIDs)"
 	query, params, err := sqlx.Named(query, map[string]interface{}{
