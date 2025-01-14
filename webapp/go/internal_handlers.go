@@ -68,15 +68,8 @@ func execMatching(rides []Ride, chairs []ChairWithLatLon) []MatchingResult {
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
-
 	chairs := []ChairWithLatLon{}
-	if err := tx.Select(&chairs, `
+	if err := db.Select(&chairs, `
 	SELECT
 		chairs.*,
 		chair_latest_location.latest_latitude AS latitude,
@@ -107,11 +100,11 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var ridesA, ridesB []Ride
-	if err := tx.SelectContext(ctx, &ridesA, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude < 150 ORDER BY created_at LIMIT ?`, len(chairsA)); err != nil {
+	if err := db.SelectContext(ctx, &ridesA, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude < 150 ORDER BY created_at LIMIT ?`, len(chairsA)); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if err := tx.SelectContext(ctx, &ridesB, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude >= 150 ORDER BY created_at LIMIT ?`, len(chairsB)); err != nil {
+	if err := db.SelectContext(ctx, &ridesB, `SELECT * FROM rides WHERE chair_id IS NULL AND pickup_latitude >= 150 ORDER BY created_at LIMIT ?`, len(chairsB)); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -141,44 +134,39 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		rideIDs = append(rideIDs, match.Ride.ID)
 	}
 
-	query := "UPDATE rides SET chair_id = ELT(FIELD(id, :rideIDs), :chairIDs), updated_at = :updatedAt WHERE id IN (:rideIDs)"
-	query, params, err := sqlx.Named(query, map[string]interface{}{
-		"rideIDs":   rideIDs,
-		"chairIDs":  chairIDs,
-		"updatedAt": time.Now(),
-	})
-	query, params, err = sqlx.In(query, params...)
-	if _, err := tx.ExecContext(ctx, query, params...); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update rides: rideIDs: %s chairIDs: %s: %w", rideIDs, chairIDs, err))
-		return
-	}
-
-	query = "UPDATE chairs SET is_available = :isAvailable WHERE id IN (:chairIDs)"
-	query, params, err = sqlx.Named(query, map[string]interface{}{
+	query := "UPDATE chairs SET is_available = :isAvailable WHERE id IN (:chairIDs)"
+	query, params, _ := sqlx.Named(query, map[string]interface{}{
 		"isAvailable": false,
 		"chairIDs":    chairIDs,
 	})
-	query, params, err = sqlx.In(query, params...)
-	if _, err := tx.ExecContext(ctx, query, params...); err != nil {
+	query, params, _ = sqlx.In(query, params...)
+	if _, err := db.ExecContext(ctx, query, params...); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update chairs: chairIDs: %s: %w", chairIDs, err))
 		return
 	}
 
+	query = "UPDATE rides SET chair_id = ELT(FIELD(id, :rideIDs), :chairIDs), updated_at = :updatedAt WHERE id IN (:rideIDs)"
+	query, params, _ = sqlx.Named(query, map[string]interface{}{
+		"rideIDs":   rideIDs,
+		"chairIDs":  chairIDs,
+		"updatedAt": time.Now(),
+	})
+	query, params, _ = sqlx.In(query, params...)
+	if _, err := db.ExecContext(ctx, query, params...); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update rides: rideIDs: %s chairIDs: %s: %w", rideIDs, chairIDs, err))
+		return
+	}
+
 	query = "SELECT id, ride_id FROM ride_statuses WHERE ride_id IN (?) AND status = 'MATCHING' FOR SHARE"
-	query, params, err = sqlx.In(query, rideIDs)
+	query, params, _ = sqlx.In(query, rideIDs)
 	var rideStatuses []RideStatus
-	if err := tx.SelectContext(ctx, &rideStatuses, query, params...); err != nil {
+	if err := db.SelectContext(ctx, &rideStatuses, query, params...); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select ride_statuses: rideIDs: %s: %w", rideIDs, err))
 		return
 	}
 	var rideStatusMap = make(map[string]string, len(rideStatuses))
 	for _, rideStatus := range rideStatuses {
 		rideStatusMap[rideStatus.RideID] = rideStatus.ID
-	}
-
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
 	}
 
 	matchedString := "[internal_matcher] chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
