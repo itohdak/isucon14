@@ -145,6 +145,5 @@ func getChairCacheByAccessToken(ctx context.Context, accessToken string) (chair 
 		return chair, err
 	}
 	chairAccessTokenCache.Store(accessToken, chair)
-	chairIDAccessTokenMap.Store(chair.ID, chair.AccessToken)
 	return chair, nil
 }

@@ -97,8 +97,6 @@ func chairPostActivity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// commit locals
-	accessToken, _ := chairIDAccessTokenMap.Load(chair.ID)
-	chairAccessTokenCache.Delete(accessToken)
 	chairCache.Delete(chair.ID)
 
 	w.WriteHeader(http.StatusNoContent)

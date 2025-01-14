@@ -40,7 +40,6 @@ var (
 	userAccessTokenCache  sync.Map
 	ownerAccessTokenCache sync.Map
 	chairAccessTokenCache sync.Map
-	chairIDAccessTokenMap sync.Map
 
 	// rides
 	rideCache                     sync.Map
