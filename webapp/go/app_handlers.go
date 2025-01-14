@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -123,6 +122,8 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	// commit locals
 	appNotifications.Store(userID, make(chan RideStatus, 10))
 
 	http.SetCookie(w, &http.Cookie{
@@ -243,14 +244,9 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 		item.Chair = getAppRidesResponseItemChair{}
 
 		chair := &Chair{}
-		if chairCached, found := chairCache.Load(ride.ChairID); found {
-			chair = chairCached.(*Chair)
-		} else {
-			if err := tx.GetContext(ctx, chair, `SELECT * FROM chairs WHERE id = ?`, ride.ChairID); err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-			chairCache.Store(ride.ChairID, chair)
+		if chair, err = getChairCache(ctx, tx, ride.ChairID.String); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair in appGetRides: %w", err))
+			return
 		}
 		item.Chair.ID = chair.ID
 		item.Chair.Name = chair.Name
@@ -293,13 +289,10 @@ type executableGet interface {
 
 func getLatestRideStatus(ctx context.Context, tx executableGet, rideID string) (string, error) {
 	status := ""
-	if rideStatusCached, found := latestRideStatusCacheByRideID.Load(rideID); found {
-		return rideStatusCached.(string), nil
-	}
-	if err := tx.GetContext(ctx, &status, `SELECT status FROM ride_statuses WHERE ride_id = ? ORDER BY created_at DESC LIMIT 1`, rideID); err != nil {
+	var err error
+	if status, err = getLatestRideStatusCache(ctx, tx, rideID); err != nil {
 		return "", err
 	}
-	latestRideStatusCacheByRideID.Store(rideID, status)
 	return status, nil
 }
 
@@ -433,14 +426,9 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ride := &Ride{}
-	if rideCached, found := rideCache.Load(rideID); found {
-		ride = rideCached.(*Ride)
-	} else {
-		if err := tx.GetContext(ctx, ride, "SELECT * FROM rides WHERE id = ?", rideID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		rideCache.Store(rideID, ride)
+	if ride, err = getRideCache(ctx, tx, rideID); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get ride in appPostRides: %w", err))
+		return
 	}
 
 	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, req.PickupCoordinate.Latitude, req.PickupCoordinate.Longitude, req.DestinationCoordinate.Latitude, req.DestinationCoordinate.Longitude)
@@ -550,19 +538,15 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	ride := &Ride{}
-	if rideCached, found := rideCache.Load(rideID); found {
-		ride = rideCached.(*Ride)
-	} else {
-		if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusNotFound, errors.New("ride not found"))
-				return
-			}
-			writeError(w, http.StatusInternalServerError, err)
+	if ride, err = getRideCache(ctx, tx, rideID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, errors.New("ride not found"))
 			return
 		}
-		rideCache.Store(rideID, ride)
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get ride in appPostRideEvaluation: %w", err))
+		return
 	}
+
 	status, err := getLatestRideStatus(ctx, tx, ride.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -629,11 +613,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	}
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
-		if ride.ChairID.Valid {
-			notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, rideID, "COMPLETED")
-		} else {
-			log.Printf("chairID is NULL: ride: %v", ride)
-		}
+		notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, rideID, "COMPLETED")
 	}
 
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
@@ -746,36 +726,28 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	status := ""
 	appChan, found := appNotifications.Load(user.ID)
 	if !found {
-		log.Printf("notification channel for app not found: userID: %s", user.ID)
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("notification channel for app not found: userID: %s", user.ID))
+		return
 	}
 	appChannel := appChan.(chan RideStatus)
 	select {
 	case newStatus := <-appChannel:
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
-		if rideCached, found := rideCache.Load(newStatus.RideID); found {
-			ride = rideCached.(*Ride)
-		} else {
-			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? AND id = ?`, user.ID, newStatus.RideID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, err)
-				return
-			}
+		if ride, err = getRideCache(ctx, tx, newStatus.RideID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
 	case <-time.After(time.Duration(PollingSec) * time.Second):
-		if userRideCached, found := userRideCache.Load(user.ID); found {
-			ride = userRideCached.(*Ride)
-		} else {
-			if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, user.ID); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					writeJSON(w, http.StatusOK, &appGetNotificationResponse{
-						RetryAfterMs: RetryAfterMs,
-					})
-					return
-				}
-				writeError(w, http.StatusInternalServerError, err)
+		if ride, err = getUserRideCache(ctx, tx, user.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusOK, &appGetNotificationResponse{
+					RetryAfterMs: RetryAfterMs,
+				})
 				return
 			}
-			userRideCache.Store(user.ID, ride)
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
 		status, err = getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
@@ -811,14 +783,9 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 
 	if ride.ChairID.Valid {
 		chair := &Chair{}
-		if chairCached, found := chairCache.Load(ride.ChairID); found {
-			chair = chairCached.(*Chair)
-		} else {
-			if err := tx.GetContext(ctx, chair, `SELECT * FROM chairs WHERE id = ?`, ride.ChairID); err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-			chairCache.Store(ride.ChairID, chair)
+		if chair, err = getChairCache(ctx, tx, ride.ChairID.String); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair in appGetNotification: %w", err))
+			return
 		}
 
 		stats, err := getChairStats(ctx, tx, chair.ID)
@@ -856,34 +823,17 @@ type ChairStats struct {
 	TotalEvaluation int64 `db:"total_evaluation"`
 }
 
-func getChairStats(ctx context.Context, tx *sqlx.Tx, chairID string) (appGetNotificationResponseChairStats, error) {
-	stats := appGetNotificationResponseChairStats{}
-
-	totalRideCount := 0
-	totalEvaluation := 0.0
-	var ret = ChairStats{}
-	if statsCached, found := chairStatsCache.Load(chairID); found {
-		stats := statsCached.(ChairStats)
-		totalRideCount = int(stats.TotalRideCount)
-		totalEvaluation = float64(stats.TotalEvaluation)
-	} else {
-		if err := tx.GetContext(
-			ctx,
-			&ret,
-			`SELECT IFNULL(COUNT(1), 0) AS total_ride_count, IFNULL(SUM(r1.evaluation), 0) AS total_evaluation FROM rides r1, ride_statuses r2 WHERE r1.id = r2.ride_id AND r2.status = 'COMPLETED' AND r1.chair_id = ?`,
-			chairID,
-		); err != nil {
-			return stats, err
-		}
-		chairStatsCache.Store(chairID, ret)
-		totalRideCount = int(ret.TotalRideCount)
-		totalEvaluation = float64(ret.TotalEvaluation)
+func getChairStats(ctx context.Context, tx *sqlx.Tx, chairID string) (stats appGetNotificationResponseChairStats, err error) {
+	var s ChairStats
+	if s, err = getChairStatsCache(ctx, tx, chairID); err != nil {
+		return stats, err
 	}
+	totalRideCount := int(s.TotalRideCount)
+	totalEvaluation := float64(s.TotalEvaluation)
 	stats.TotalRidesCount = totalRideCount
 	if totalRideCount > 0 {
 		stats.TotalEvaluationAvg = totalEvaluation / float64(totalRideCount)
 	}
-
 	return stats, nil
 }
 
@@ -989,6 +939,7 @@ func calculateFare(pickupLatitude, pickupLongitude, destLatitude, destLongitude 
 
 func calculateDiscountedFare(ctx context.Context, tx *sqlx.Tx, userID string, ride *Ride, pickupLatitude, pickupLongitude, destLatitude, destLongitude int) (int, error) {
 	var coupon Coupon
+	var err error
 	discount := 0
 	if ride != nil {
 		destLatitude = ride.DestinationLatitude
@@ -997,18 +948,12 @@ func calculateDiscountedFare(ctx context.Context, tx *sqlx.Tx, userID string, ri
 		pickupLongitude = ride.PickupLongitude
 
 		// すでにクーポンが紐づいているならそれの割引額を参照
-		if rideCouponCached, found := rideCouponCache.Load(ride.ID); found {
-			coupon = rideCouponCached.(Coupon)
-			discount = coupon.Discount
-		} else {
-			if err := tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", ride.ID); err != nil {
-				if !errors.Is(err, sql.ErrNoRows) {
-					return 0, err
-				}
-			} else {
-				rideCouponCache.Store(ride.ID, coupon)
-				discount = coupon.Discount
+		if coupon, err = getRideCouponCache(ctx, tx, ride.ID); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return 0, err
 			}
+		} else {
+			discount = coupon.Discount
 		}
 	} else {
 		// 初回利用クーポンを最優先で使う
