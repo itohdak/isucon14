@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -23,35 +24,49 @@ import (
 )
 
 var db *sqlx.DB
-var RetryAfterMs int = 30
-var PollingSec int = 2
 
+// common variables
 var (
-	latestRideStatusCacheByRideID sync.Map
+	// notification interval
+	RetryAfterMs int = 30
+
+	// long polling timeout
+	PollingSec int = 2
 )
 
+// chaches
 var (
+	// access tokens
 	userAccessTokenCache  sync.Map
 	ownerAccessTokenCache sync.Map
 	chairAccessTokenCache sync.Map
 	chairIDAccessTokenMap sync.Map
-	chairModelCache       sync.Map
 
-	userRideCache  sync.Map
-	chairRideCache sync.Map
-	rideCache      sync.Map
+	// rides
+	rideCache                     sync.Map
+	userRideCache                 sync.Map
+	chairRideCache                sync.Map
+	latestRideStatusCacheByRideID sync.Map
 
-	chairCache      sync.Map
-	rideCouponCache sync.Map
-	userCache       sync.Map
+	// users
+	userCache sync.Map
 
-	appNotifications   sync.Map
-	chairNotifications sync.Map
-
+	// chairs
+	chairCache sync.Map
+	// chair models
+	chairModelCache sync.Map
+	// chair stats
 	chairStatsCache sync.Map
+
+	// coupons
+	rideCouponCache sync.Map
 )
 
-var updateCoordinateQueue chan CoordinateToUpdate
+// notification channels
+var (
+	appNotifications   sync.Map
+	chairNotifications sync.Map
+)
 
 type CoordinateToUpdate struct {
 	ChairLocationID string    `db:"chair_location_id"`
@@ -60,6 +75,9 @@ type CoordinateToUpdate struct {
 	Longitude       int       `db:"longitude"`
 	CreatedAt       time.Time `db:"created_at"`
 }
+
+// channel to enqueue chair latest locations
+var updateCoordinateQueue chan CoordinateToUpdate
 
 func main() {
 	go standalone.Integrate(":8888")
@@ -194,114 +212,9 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := db.ExecContext(ctx, `
-  INSERT INTO chair_total_distance(
-    chair_id,
-    total_distance,
-    latest_timestamp,
-    latest_latitude,
-    latest_longitude
-)(
-    select
-        distance.chair_id,
-        distance.total_distance,
-        distance.latest_timestamp,
-        chair_locations.latitude,
-        chair_locations.longitude
-    from
-        chair_locations
-        INNER JOIN
-            (
-                SELECT
-                    chair_id,
-                    SUM(IFNULL(distance, 0)) AS total_distance,
-                    MAX(created_at) AS latest_timestamp,
-                    0 AS latest_latitude,
-                    0 AS latest_longitude
-                FROM
-                    (
-                        SELECT
-                            chair_id,
-                            created_at,
-                            ABS(latitude - LAG(latitude) OVER(PARTITION BY chair_id ORDER BY created_at)) + ABS(longitude - LAG(longitude) OVER(PARTITION BY chair_id ORDER BY created_at)) AS distance
-                        FROM
-                            chair_locations
-                    ) AS tmp
-                GROUP BY
-                    chair_id
-            ) as distance
-        ON  chair_locations.created_at = distance.latest_timestamp
-)
-ON DUPLICATE KEY UPDATE
-    total_distance =
-    VALUES(
-        total_distance
-    ),
-    latest_timestamp =
-    VALUES(
-        latest_timestamp
-    ),
-    latest_latitude = 0,
-    latest_longitude = 0
-  `); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+	if err := prepare(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to prepare: %w", err))
 		return
-	}
-
-	var chairModels []ChairModel
-	if err := db.SelectContext(ctx, &chairModels, `SELECT * FROM chair_models`); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair models: %v", err))
-		return
-	}
-	for _, chairModel := range chairModels {
-		chairModelCache.Store(chairModel.Name, chairModel)
-	}
-
-	var userIDs []string
-	if err := db.SelectContext(ctx, &userIDs, `SELECT id FROM users`); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get user IDs: %v", err))
-		return
-	}
-	for _, userID := range userIDs {
-		appNotifications.Store(userID, make(chan RideStatus, 10))
-	}
-
-	var chairIDs []string
-	if err := db.SelectContext(ctx, &chairIDs, `SELECT id FROM chairs`); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get ride IDs: %v", err))
-		return
-	}
-	for _, chairID := range chairIDs {
-		chairNotifications.Store(chairID, make(chan RideStatus, 10))
-	}
-
-	db.ExecContext(
-		ctx,
-		`UPDATE rides
-		 SET sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude))
-		 WHERE (SELECT COUNT(*) FROM ride_statuses WHERE ride_id = rides.id AND status = 'COMPLETED')`,
-		initialFare, farePerDistance,
-	)
-
-	db.ExecContext(
-		ctx,
-		`UPDATE chairs SET is_available = 0 WHERE (SELECT COUNT(*) FROM rides WHERE chair_id = chairs.id AND evaluation IS NULL)`,
-	)
-
-	chairStats := []struct {
-		ChairID string `db:"chair_id"`
-		ChairStats
-	}{}
-	if err := db.SelectContext(
-		ctx,
-		&chairStats,
-		`SELECT r1.chair_id AS chair_id, IFNULL(COUNT(1), 0) AS total_ride_count, IFNULL(SUM(r1.evaluation), 0) AS total_evaluation FROM rides r1, ride_statuses r2 WHERE r1.id = r2.ride_id AND r2.status = 'COMPLETED' GROUP BY r1.chair_id`,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair stats: %v", err))
-		return
-	}
-	for _, chairStat := range chairStats {
-		chairStatsCache.Store(chairStat.ChairID, chairStat.ChairStats)
 	}
 
 	go func() {
@@ -311,6 +224,149 @@ ON DUPLICATE KEY UPDATE
 	}()
 
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
+}
+
+func prepare(ctx context.Context) error {
+	// load cache
+	if err := loadCache(ctx); err != nil {
+		return fmt.Errorf("failed to load cache: %w", err)
+	}
+
+	// prepare for notification
+	if err := prepareNotification(ctx); err != nil {
+		return fmt.Errorf("failed to prepare notification: %w", err)
+	}
+
+	// update sales for already completed rides
+	if _, err := db.ExecContext(
+		ctx,
+		`UPDATE rides
+		 SET sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude))
+		 WHERE (SELECT COUNT(*) FROM ride_statuses WHERE ride_id = rides.id AND status = 'COMPLETED')`,
+		initialFare, farePerDistance,
+	); err != nil {
+		return fmt.Errorf("failed to update sales in rides: %w", err)
+	}
+
+	// update is_available for free chairs
+	if _, err := db.ExecContext(
+		ctx,
+		`UPDATE chairs SET is_available = 0 WHERE (SELECT COUNT(*) FROM rides WHERE chair_id = chairs.id AND evaluation IS NULL)`,
+	); err != nil {
+		return fmt.Errorf("failed to update is_available in chairs: %w", err)
+	}
+
+	// store chair latest distance/location into chair_total_distance
+	if _, err := db.ExecContext(ctx, `
+	INSERT INTO
+		chair_total_distance(
+			chair_id,
+			total_distance,
+			latest_timestamp,
+			latest_latitude,
+			latest_longitude
+		)(
+			select
+				distance.chair_id,
+				distance.total_distance,
+				distance.latest_timestamp,
+				chair_locations.latitude,
+				chair_locations.longitude
+			from
+				chair_locations
+				INNER JOIN (
+					SELECT
+						chair_id,
+						SUM(IFNULL(distance, 0)) AS total_distance,
+						MAX(created_at) AS latest_timestamp,
+						0 AS latest_latitude,
+						0 AS latest_longitude
+					FROM
+						(
+							SELECT
+								chair_id,
+								created_at,
+								ABS(
+									latitude - LAG(latitude) OVER(
+										PARTITION BY chair_id
+										ORDER BY
+											created_at
+									)
+								) + ABS(
+									longitude - LAG(longitude) OVER(
+										PARTITION BY chair_id
+										ORDER BY
+											created_at
+									)
+								) AS distance
+							FROM
+								chair_locations
+						) AS tmp
+					GROUP BY
+						chair_id
+				) as distance ON chair_locations.created_at = distance.latest_timestamp
+		) ON DUPLICATE KEY
+	UPDATE
+		total_distance = VALUES(total_distance),
+		latest_timestamp = VALUES(latest_timestamp),
+		latest_latitude = 0,
+		latest_longitude = 0
+	`); err != nil {
+		return fmt.Errorf("failed to insert into chair_latest_distance: %w", err)
+	}
+
+	return nil
+}
+
+func loadCache(ctx context.Context) error {
+	// cache chairModels
+	var chairModels []ChairModel
+	if err := db.SelectContext(ctx, &chairModels, `SELECT * FROM chair_models`); err != nil {
+		return fmt.Errorf("failed to get chair models: %w", err)
+	}
+	for _, chairModel := range chairModels {
+		chairModelCache.Store(chairModel.Name, chairModel)
+	}
+
+	// cache chair stats
+	chairStats := []struct {
+		ChairID string `db:"chair_id"`
+		ChairStats
+	}{}
+	if err := db.SelectContext(
+		ctx,
+		&chairStats,
+		`SELECT r1.chair_id AS chair_id, IFNULL(COUNT(1), 0) AS total_ride_count, IFNULL(SUM(r1.evaluation), 0) AS total_evaluation FROM rides r1, ride_statuses r2 WHERE r1.id = r2.ride_id AND r2.status = 'COMPLETED' GROUP BY r1.chair_id`,
+	); err != nil {
+		return fmt.Errorf("failed to get chair stats: %w", err)
+	}
+	for _, chairStat := range chairStats {
+		chairStatsCache.Store(chairStat.ChairID, chairStat.ChairStats)
+	}
+
+	return nil
+}
+
+func prepareNotification(ctx context.Context) error {
+	// create channel for user notification
+	var userIDs []string
+	if err := db.SelectContext(ctx, &userIDs, `SELECT id FROM users`); err != nil {
+		return fmt.Errorf("failed to get user IDs: %w", err)
+	}
+	for _, userID := range userIDs {
+		appNotifications.Store(userID, make(chan RideStatus, 10))
+	}
+
+	// create channel for chair notification
+	var chairIDs []string
+	if err := db.SelectContext(ctx, &chairIDs, `SELECT id FROM chairs`); err != nil {
+		return fmt.Errorf("failed to get ride IDs: %w", err)
+	}
+	for _, chairID := range chairIDs {
+		chairNotifications.Store(chairID, make(chan RideStatus, 10))
+	}
+
+	return nil
 }
 
 type Coordinate struct {
