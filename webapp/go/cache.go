@@ -108,3 +108,43 @@ func getRideCouponCache(ctx context.Context, tx *sqlx.Tx, rideID string) (coupon
 	rideCouponCache.Store(rideID, coupon)
 	return coupon, nil
 }
+
+func getUserCacheByAccessToken(ctx context.Context, accessToken string) (user *User, err error) {
+	if userCached, found := userAccessTokenCache.Load(accessToken); found {
+		user = userCached.(*User)
+		return user, nil
+	}
+	err = db.GetContext(ctx, user, "SELECT * FROM users WHERE access_token = ?", accessToken)
+	if err != nil {
+		return user, err
+	}
+	userAccessTokenCache.Store(accessToken, user)
+	return user, nil
+}
+
+func getOwnerCacheByAccessToken(ctx context.Context, accessToken string) (owner *Owner, err error) {
+	if ownerCached, found := ownerAccessTokenCache.Load(accessToken); found {
+		owner = ownerCached.(*Owner)
+		return owner, nil
+	}
+	err = db.GetContext(ctx, owner, "SELECT * FROM owners WHERE access_token = ?", accessToken)
+	if err != nil {
+		return owner, err
+	}
+	ownerAccessTokenCache.Store(accessToken, owner)
+	return owner, nil
+}
+
+func getChairCacheByAccessToken(ctx context.Context, accessToken string) (chair *Chair, err error) {
+	if chairCached, found := chairAccessTokenCache.Load(accessToken); found {
+		chair = chairCached.(*Chair)
+		return chair, nil
+	}
+	err = db.GetContext(ctx, chair, "SELECT * FROM chairs WHERE access_token = ?", accessToken)
+	if err != nil {
+		return chair, err
+	}
+	chairAccessTokenCache.Store(accessToken, chair)
+	chairIDAccessTokenMap.Store(chair.ID, chair.AccessToken)
+	return chair, nil
+}
