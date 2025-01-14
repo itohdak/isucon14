@@ -380,7 +380,7 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ride.ChairID.String != chair.ID {
-		writeError(w, http.StatusBadRequest, errors.New("not assigned to this ride"))
+		writeError(w, http.StatusBadRequest, fmt.Errorf("not assigned to this ride: ride.ChairID: %s, current chair.ID: %s", ride.ChairID.String, chair.ID))
 		return
 	}
 
