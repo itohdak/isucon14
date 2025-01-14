@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -167,34 +168,63 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	matches := append(matchesA, matchesB...)
 
+	var chairIDs = make([]string, 0, len(matches))
+	var rideIDs = make([]string, 0, len(matches))
+	for _, match := range matches {
+		chairIDs = append(chairIDs, match.Chair.ID)
+		rideIDs = append(rideIDs, match.Ride.ID)
+	}
+	chairIDsString := strings.Join(chairIDs, ",")
+	rideIDsString := strings.Join(rideIDs, ",")
+
+	if _, err := db.ExecContext(
+		ctx,
+		"UPDATE rides SET chair_id = ELT(FIELD(id, ?), ?), updated_at = ? WHERE id IN (?)",
+		rideIDsString,
+		chairIDsString,
+		time.Now(),
+		rideIDsString,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update rides: rideIDsString: %s chairIDsString: %s: %w", rideIDsString, chairIDsString, err))
+		return
+	}
+
+	if _, err := db.ExecContext(
+		ctx,
+		"UPDATE chairs SET is_available = ? WHERE id IN (?)",
+		true,
+		chairIDsString,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update chairs: chairIDsString: %s: %w", chairIDsString, err))
+		return
+	}
+
+	var rideStatuses []RideStatus
+	if err := db.SelectContext(
+		ctx,
+		&rideStatuses,
+		"SELECT id, ride_id FROM ride_statuses WHERE ride_id IN (?) AND status = ?",
+		rideIDsString,
+		"MATCHING",
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select ride_statuses: rideIDsString: %s: %w", rideIDsString, err))
+		return
+	}
+	var rideStatusMap map[string]string
+	for _, rideStatus := range rideStatuses {
+		rideStatusMap[rideStatus.RideID] = rideStatus.ID
+	}
 	matchedString := "[internal_matcher] chair_id,ride_id,pck_lat,pck_lon,dst_lat,dst_lon,curr_lat,curr_lon\n"
 	for _, match := range matches {
 		matchedRideID := match.Ride.ID
 		matchedUserID := match.Ride.UserID
 		matchedChairID := match.Chair.ID
 
-		if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ?, updated_at = ? WHERE id = ?", matchedChairID, time.Now(), matchedRideID); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update rides: ride_id: %s chair_id: %s: %w", matchedRideID, matchedChairID, err))
-			return
-		}
-		if _, err := db.ExecContext(ctx, "UPDATE chairs SET is_available = ? WHERE id = ?", false, matchedChairID); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update chair availability to false: chair_id: %s: %w", matchedChairID, err))
-			return
-		}
-
 		// commit locals
 		userRideCache.Delete(matchedUserID)
 		chairRideCache.Delete(matchedChairID)
 		rideCache.Delete(matchedRideID)
-
-		var rideStatusID string
-		if err := db.GetContext(ctx, &rideStatusID, "SELECT id FROM ride_statuses WHERE ride_id = ? AND status = ?", matchedRideID, "MATCHING"); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		// commit locals
-		notifyToChannel("", matchedChairID, rideStatusID, matchedRideID, "MATCHING")
+		notifyToChannel("", matchedChairID, rideStatusMap[matchedRideID], matchedRideID, "MATCHING")
 
 		matchedString += fmt.Sprintf("[internal_matcher] %s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
 	}
