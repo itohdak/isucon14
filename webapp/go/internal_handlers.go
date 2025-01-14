@@ -94,27 +94,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			) c
 		WHERE
 			c.rn = 1
-	),
-	chair_latest_status AS (
-		SELECT
-			*
-		FROM
-			(
-				SELECT
-					rides.*,
-					ride_statuses.status AS ride_status,
-					ROW_NUMBER() OVER (
-						PARTITION BY chair_id
-						ORDER BY
-							ride_statuses.created_at DESC
-					) AS rn
-				FROM
-					rides
-					INNER JOIN ride_statuses ON rides.id = ride_statuses.ride_id
-					AND ride_statuses.chair_sent_at IS NOT NULL -- この条件は椅子の通知エンドポイントの実装で、未送信の状態がある2つ以上の異なるライドが割り当てられていても正しく順番に送るように修正していれば不要
-			) r
-		WHERE
-			r.rn = 1
 	)
 	SELECT
 		chairs.*,
@@ -122,13 +101,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chair_latest_location.longitude
 	FROM
 		chairs
-		LEFT JOIN chair_latest_status ON chairs.id = chair_latest_status.chair_id
 		LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
 	WHERE
-		(
-			chair_latest_status.ride_status = 'COMPLETED'
-			OR chair_latest_status.ride_status IS NULL
-		)
+		chairs.is_available
 		AND chairs.is_active
 		AND chair_latest_location.latitude IS NOT NULL`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -198,7 +173,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	query = "UPDATE chairs SET is_available = :isAvailable WHERE id IN (:chairIDs)"
 	query, params, err = sqlx.Named(query, map[string]interface{}{
-		"isAvailable": true,
+		"isAvailable": false,
 		"chairIDs":    chairIDs,
 	})
 	query, params, err = sqlx.In(query, params...)
