@@ -34,6 +34,8 @@ var (
 	chairStatsCache sync.Map
 	// chair latest location
 	chairLatestLocationCache sync.Map
+	// valid chairs
+	validChairsCache sync.Map
 
 	// owners
 	ownerCache sync.Map
@@ -55,7 +57,7 @@ func getUserCache(ctx context.Context, tx *sqlx.Tx, userID string) (user *User, 
 	return user, nil
 }
 
-func getChairCache(ctx context.Context, tx *sqlx.Tx, chairID string) (chair *Chair, err error) {
+func getChairCache(ctx context.Context, tx executableGet, chairID string) (chair *Chair, err error) {
 	chair = &Chair{}
 	if chairCached, found := chairCache.Load(chairID); found {
 		chair = chairCached.(*Chair)
@@ -243,5 +245,42 @@ func updateChairLatestLocationCache(ctx context.Context, chairID string, latestL
 	}
 	latestLocation.TotalDistance += currentLatestLocation.TotalDistance + calculateDistance(latestLocation.Latitude, latestLocation.Longitude, currentLatestLocation.Latitude, currentLatestLocation.Longitude)
 	chairLatestLocationCache.Store(chairID, latestLocation)
+	return nil
+}
+
+func getValidChairsCache(ctx context.Context) (validChairs map[string]struct{}, err error) {
+	validChairs = map[string]struct{}{}
+	if validChairsCached, found := validChairsCache.Load(0); found {
+		validChairs = validChairsCached.(map[string]struct{})
+		return validChairs, nil
+	}
+	validChairIDs := []string{}
+	if err = db.SelectContext(ctx, &validChairIDs, "SELECT id FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
+		return validChairs, err
+	}
+	for _, validChairID := range validChairIDs {
+		validChairs[validChairID] = struct{}{}
+	}
+	validChairsCache.Store(0, validChairs)
+	return validChairs, nil
+}
+
+func addValidChairCache(ctx context.Context, chairID string) (err error) {
+	validChairs, err := getValidChairsCache(ctx)
+	if err != nil {
+		return err
+	}
+	validChairs[chairID] = struct{}{}
+	validChairsCache.Store(0, validChairs)
+	return nil
+}
+
+func removeValidChairCache(ctx context.Context, chairID string) (err error) {
+	validChairs, err := getValidChairsCache(ctx)
+	if err != nil {
+		return err
+	}
+	delete(validChairs, chairID)
+	validChairsCache.Store(0, validChairs)
 	return nil
 }

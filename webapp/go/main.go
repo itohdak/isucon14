@@ -345,6 +345,9 @@ func loadCache(ctx context.Context) error {
 		chairLatestLocationCache.Store(chairLatestLocation.ChairID, &chairLatestLocation)
 	}
 
+	// cache valid chairs
+	_, _ = getValidChairsCache(ctx)
+
 	return nil
 }
 

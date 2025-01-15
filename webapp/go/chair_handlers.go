@@ -97,6 +97,11 @@ func chairPostActivity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if req.IsActive {
+		addValidChairCache(ctx, chair.ID)
+	} else {
+		removeValidChairCache(ctx, chair.ID)
+	}
 
 	// commit locals
 	chairCache.Delete(chair.ID)
