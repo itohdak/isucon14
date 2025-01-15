@@ -826,13 +826,6 @@ func appGetNotificationData(ctx context.Context, user *User, newRideStatus *Ride
 		}
 	}
 
-	// if yetSentRideStatus.ID != "" {
-	// 	_, err := tx.ExecContext(ctx, `UPDATE ride_statuses SET app_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
-	// 	if err != nil {
-	// 		return &appGetNotificationResponseData{}, err
-	// 	}
-	// }
-
 	if err := tx.Commit(); err != nil {
 		return &appGetNotificationResponseData{}, err
 	}

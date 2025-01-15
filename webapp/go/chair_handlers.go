@@ -219,14 +219,6 @@ func updateCoordinates() {
 		return
 	}
 
-	// if _, err := db.NamedExec(
-	// 	`INSERT INTO chair_locations (id, chair_id, latitude, longitude, created_at) VALUES (:chair_location_id, :chair_id, :latitude, :longitude, :created_at)`,
-	// 	coordinates,
-	// ); err != nil {
-	// 	log.Printf("[ERROR] failed to insert into chair_locations: %w", err)
-	// 	return
-	// }
-
 	if _, err := db.NamedExec(
 		`INSERT INTO
 			chair_latest_location (chair_id, total_distance, latest_timestamp, latest_latitude, latest_longitude)
@@ -336,13 +328,6 @@ func chairGetNotificationData(ctx context.Context, chair *Chair, newRideStatus *
 	if user, err = getUserCache(ctx, tx, ride.UserID); err != nil {
 		return &chairGetNotificationResponseData{}, fmt.Errorf("failed to get user in chairGetNotification: %w", err)
 	}
-
-	// if yetSentRideStatus.ID != "" {
-	// 	_, err := tx.ExecContext(ctx, `UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
-	// 	if err != nil {
-	// 		return &chairGetNotificationResponseData{}, err
-	// 	}
-	// }
 
 	if err := tx.Commit(); err != nil {
 		return &chairGetNotificationResponseData{}, err
