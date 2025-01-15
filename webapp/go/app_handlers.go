@@ -785,40 +785,26 @@ func appGetNotificationData(ctx context.Context, user *User, newRideStatus *Ride
 	if ride, err = getRideCache(ctx, tx, newRideStatus.RideID); err != nil {
 		return &appGetNotificationResponseData{}, err
 	}
-	// 	if ride, err = getUserRideCache(ctx, tx, user.ID); err != nil {
-	// 		if errors.Is(err, sql.ErrNoRows) {
-	// 			return &appGetNotificationResponseData{}, nil
-	// 		}
-	// 		return &appGetNotificationResponseData{}, err
-	// 	}
-	// 	status, err = getLatestRideStatus(ctx, tx, ride.ID)
-	// 	if err != nil {
-	// 		return &appGetNotificationResponseData{}, err
-	// 	}
-	// }
 
 	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, ride.PickupLatitude, ride.PickupLongitude, ride.DestinationLatitude, ride.DestinationLongitude)
 	if err != nil {
 		return &appGetNotificationResponseData{}, err
 	}
 
-	response := &appGetNotificationResponse{
-		Data: &appGetNotificationResponseData{
-			RideID: ride.ID,
-			PickupCoordinate: Coordinate{
-				Latitude:  ride.PickupLatitude,
-				Longitude: ride.PickupLongitude,
-			},
-			DestinationCoordinate: Coordinate{
-				Latitude:  ride.DestinationLatitude,
-				Longitude: ride.DestinationLongitude,
-			},
-			Fare:      fare,
-			Status:    status,
-			CreatedAt: ride.CreatedAt.UnixMilli(),
-			UpdateAt:  ride.UpdatedAt.UnixMilli(),
+	response := &appGetNotificationResponseData{
+		RideID: ride.ID,
+		PickupCoordinate: Coordinate{
+			Latitude:  ride.PickupLatitude,
+			Longitude: ride.PickupLongitude,
 		},
-		RetryAfterMs: RetryAfterMs,
+		DestinationCoordinate: Coordinate{
+			Latitude:  ride.DestinationLatitude,
+			Longitude: ride.DestinationLongitude,
+		},
+		Fare:      fare,
+		Status:    status,
+		CreatedAt: ride.CreatedAt.UnixMilli(),
+		UpdateAt:  ride.UpdatedAt.UnixMilli(),
 	}
 
 	if ride.ChairID.Valid {
@@ -832,7 +818,7 @@ func appGetNotificationData(ctx context.Context, user *User, newRideStatus *Ride
 			return &appGetNotificationResponseData{}, err
 		}
 
-		response.Data.Chair = &appGetNotificationResponseChair{
+		response.Chair = &appGetNotificationResponseChair{
 			ID:    chair.ID,
 			Name:  chair.Name,
 			Model: chair.Model,
@@ -851,7 +837,7 @@ func appGetNotificationData(ctx context.Context, user *User, newRideStatus *Ride
 		return &appGetNotificationResponseData{}, err
 	}
 
-	return response.Data, nil
+	return response, nil
 }
 
 type ChairStats struct {

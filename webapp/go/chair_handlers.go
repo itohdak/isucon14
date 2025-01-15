@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -260,90 +262,108 @@ type chairGetNotificationResponseData struct {
 	Status                string     `json:"status"`
 }
 
-func chairGetNotification(w http.ResponseWriter, r *http.Request) {
+func chairGetNotificationSSE(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	chair := ctx.Value("chair").(*Chair)
 
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
-	ride := &Ride{}
-	yetSentRideStatus := RideStatus{}
-	status := ""
+	// ref: https://packagemain.tech/p/implementing-server-sent-events-in-go
 
+	// Set http headers required for SSE
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Create a channel for client disconnection
+	clientGone := r.Context().Done()
+
+	rc := http.NewResponseController(w)
 	chairChan, found := chairNotifications.Load(chair.ID)
 	if !found {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("notification channel for chair not found: chairID: %s", chair.ID))
+		log.Printf("[ERROR] notification channel for user not found: chairID: %s", chair.ID)
 		return
 	}
 	chairChannel := chairChan.(chan RideStatus)
-	select {
-	case newStatus := <-chairChannel:
-		yetSentRideStatus = newStatus
-		status = yetSentRideStatus.Status
-		if ride, err = getRideCache(ctx, tx, newStatus.RideID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+
+	for {
+		select {
+		case <-clientGone:
+			fmt.Println("Client disconnected")
 			return
-		}
-	case <-time.After(time.Duration(PollingSec) * time.Second):
-		if ride, err = getChairRideCache(ctx, tx, chair.ID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
-					RetryAfterMs: RetryAfterMs,
-				})
+		case newStatus := <-chairChannel:
+			// Send an event to the client
+			data, err := chairGetNotificationData(ctx, chair, &newStatus)
+			if err != nil {
+				log.Printf("failed to get chair notification data: %w", err)
 				return
 			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			dataMarshal, err := json.Marshal(data)
+			if err != nil {
+				log.Printf("failed to json marshal: %w", err)
+				return
+			}
+			// log.Printf("data: %s\n\n", string(dataMarshal))
+			if _, err = fmt.Fprintf(w, "data: %s\n\n", string(dataMarshal)); err != nil {
+				log.Printf("failed to write data: %w", err)
+				return
+			}
+			err = rc.Flush()
+			if err != nil {
+				log.Printf("failed to flush: %w", err)
+				return
+			}
 		}
-		status, err = getLatestRideStatus(ctx, tx, ride.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
+	}
+}
+
+func chairGetNotificationData(ctx context.Context, chair *Chair, newRideStatus *RideStatus) (*chairGetNotificationResponseData, error) {
+	tx, err := db.Beginx()
+	if err != nil {
+		return &chairGetNotificationResponseData{}, err
+	}
+	defer tx.Rollback()
+	ride := &Ride{}
+	yetSentRideStatus := &RideStatus{}
+	status := ""
+
+	yetSentRideStatus = newRideStatus
+	status = yetSentRideStatus.Status
+	if ride, err = getRideCache(ctx, tx, newRideStatus.RideID); err != nil {
+		return &chairGetNotificationResponseData{}, fmt.Errorf("notification channel for chair not found: chairID: %s", chair.ID)
 	}
 
 	user := &User{}
 	if user, err = getUserCache(ctx, tx, ride.UserID); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get user in chairGetNotification: %w", err))
-		return
+		return &chairGetNotificationResponseData{}, fmt.Errorf("failed to get user in chairGetNotification: %w", err)
 	}
 
 	if yetSentRideStatus.ID != "" {
 		_, err := tx.ExecContext(ctx, `UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return &chairGetNotificationResponseData{}, err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return &chairGetNotificationResponseData{}, err
 	}
 
-	writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
-		Data: &chairGetNotificationResponseData{
-			RideID: ride.ID,
-			User: simpleUser{
-				ID:   user.ID,
-				Name: fmt.Sprintf("%s %s", user.Firstname, user.Lastname),
-			},
-			PickupCoordinate: Coordinate{
-				Latitude:  ride.PickupLatitude,
-				Longitude: ride.PickupLongitude,
-			},
-			DestinationCoordinate: Coordinate{
-				Latitude:  ride.DestinationLatitude,
-				Longitude: ride.DestinationLongitude,
-			},
-			Status: status,
+	return &chairGetNotificationResponseData{
+		RideID: ride.ID,
+		User: simpleUser{
+			ID:   user.ID,
+			Name: fmt.Sprintf("%s %s", user.Firstname, user.Lastname),
 		},
-		RetryAfterMs: RetryAfterMs,
-	})
+		PickupCoordinate: Coordinate{
+			Latitude:  ride.PickupLatitude,
+			Longitude: ride.PickupLongitude,
+		},
+		DestinationCoordinate: Coordinate{
+			Latitude:  ride.DestinationLatitude,
+			Longitude: ride.DestinationLongitude,
+		},
+		Status: status,
+	}, nil
 }
 
 type postChairRidesRideIDStatusRequest struct {
