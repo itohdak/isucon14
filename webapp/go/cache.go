@@ -5,8 +5,39 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/jmoiron/sqlx"
+)
+
+// chaches
+var (
+	// access tokens
+	userAccessTokenCache  sync.Map
+	ownerAccessTokenCache sync.Map
+	chairAccessTokenCache sync.Map
+
+	// rides
+	rideCache                     sync.Map
+	userRideCache                 sync.Map
+	chairRideCache                sync.Map
+	latestRideStatusCacheByRideID sync.Map
+
+	// users
+	userCache sync.Map
+
+	// chairs
+	chairCache sync.Map
+	// chair models
+	chairModelCache sync.Map
+	// chair stats
+	chairStatsCache sync.Map
+
+	// owners
+	ownerCache sync.Map
+
+	// coupons
+	rideCouponCache sync.Map
 )
 
 func getUserCache(ctx context.Context, tx *sqlx.Tx, userID string) (user *User, err error) {
@@ -136,6 +167,21 @@ func getUserCacheByAccessToken(ctx context.Context, accessToken string) (user *U
 	return user, nil
 }
 
+func getOwnerCacheByID(ctx context.Context, tx *sqlx.Tx, ownerID string) (owner *Owner, err error) {
+	owner = &Owner{}
+	if ownerCached, found := ownerCache.Load(ownerID); found {
+		owner = ownerCached.(*Owner)
+		return owner, nil
+	}
+	err = db.GetContext(ctx, owner, "SELECT * FROM owners WHERE id = ?", ownerID)
+	if err != nil {
+		return owner, err
+	}
+	ownerCache.Store(ownerID, owner)
+	ownerAccessTokenCache.Store(owner.AccessToken, owner)
+	return owner, nil
+}
+
 func getOwnerCacheByAccessToken(ctx context.Context, accessToken string) (owner *Owner, err error) {
 	owner = &Owner{}
 	if ownerCached, found := ownerAccessTokenCache.Load(accessToken); found {
@@ -147,6 +193,7 @@ func getOwnerCacheByAccessToken(ctx context.Context, accessToken string) (owner 
 		return owner, err
 	}
 	ownerAccessTokenCache.Store(accessToken, owner)
+	ownerCache.Store(owner.ID, owner)
 	return owner, nil
 }
 

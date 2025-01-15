@@ -34,33 +34,6 @@ var (
 	PollingSec int = 2
 )
 
-// chaches
-var (
-	// access tokens
-	userAccessTokenCache  sync.Map
-	ownerAccessTokenCache sync.Map
-	chairAccessTokenCache sync.Map
-
-	// rides
-	rideCache                     sync.Map
-	userRideCache                 sync.Map
-	chairRideCache                sync.Map
-	latestRideStatusCacheByRideID sync.Map
-
-	// users
-	userCache sync.Map
-
-	// chairs
-	chairCache sync.Map
-	// chair models
-	chairModelCache sync.Map
-	// chair stats
-	chairStatsCache sync.Map
-
-	// coupons
-	rideCouponCache sync.Map
-)
-
 // notification channels
 var (
 	appNotifications   sync.Map

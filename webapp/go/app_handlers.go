@@ -255,7 +255,7 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 		item.Chair.Model = chair.Model
 
 		owner := &Owner{}
-		if err := tx.GetContext(ctx, owner, `SELECT * FROM owners WHERE id = ?`, chair.OwnerID); err != nil {
+		if owner, err = getOwnerCacheByID(ctx, tx, chair.OwnerID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
