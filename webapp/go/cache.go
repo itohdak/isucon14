@@ -223,13 +223,23 @@ func getChairLatestLocationCache(ctx context.Context, chairID string) (latestLoc
 	if err != nil {
 		return latestLocation, err
 	}
+	chairLatestLocationCache.Store(chairID, latestLocation)
 	return latestLocation, nil
 }
 
 func updateChairLatestLocationCache(ctx context.Context, chairID string, latestLocation *ChairLatestLocation) (err error) {
 	currentLatestLocation, err := getChairLatestLocationCache(ctx, chairID)
 	if err != nil {
-		return err
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		currentLatestLocation = &ChairLatestLocation{
+			ChairID:       chairID,
+			TotalDistance: 0,
+			Latitude:      latestLocation.Latitude,
+			Longitude:     latestLocation.Longitude,
+			UpdatedAt:     latestLocation.UpdatedAt,
+		}
 	}
 	latestLocation.TotalDistance += currentLatestLocation.TotalDistance + calculateDistance(latestLocation.Latitude, latestLocation.Longitude, currentLatestLocation.Latitude, currentLatestLocation.Longitude)
 	chairLatestLocationCache.Store(chairID, latestLocation)
