@@ -659,6 +659,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paymentGatewayRequest := &paymentGatewayPostPaymentRequest{
+		RideID: ride.ID,
 		Amount: fare,
 	}
 
