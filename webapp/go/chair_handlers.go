@@ -134,6 +134,12 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		Longitude:       req.Longitude,
 		CreatedAt:       createdAt,
 	}
+	updateChairLatestLocationCache(ctx, chair.ID, &ChairLatestLocation{
+		ChairID:   chair.ID,
+		Latitude:  req.Latitude,
+		Longitude: req.Longitude,
+		UpdatedAt: createdAt,
+	})
 
 	commitCache := func() {}
 	ride := &Ride{}

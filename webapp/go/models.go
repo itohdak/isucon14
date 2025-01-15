@@ -100,3 +100,11 @@ type Coupon struct {
 	CreatedAt time.Time `db:"created_at"`
 	UsedBy    *string   `db:"used_by"`
 }
+
+type ChairLatestLocation struct {
+	ChairID       string    `db:"chair_id"`
+	TotalDistance int       `db:"total_distance"`
+	Latitude      int       `db:"latest_latitude"`
+	Longitude     int       `db:"latest_longitude"`
+	UpdatedAt     time.Time `db:"latest_timestamp"`
+}

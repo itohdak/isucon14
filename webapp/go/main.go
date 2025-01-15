@@ -219,16 +219,6 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 }
 
 func prepare(ctx context.Context) error {
-	// load cache
-	if err := loadCache(ctx); err != nil {
-		return fmt.Errorf("failed to load cache: %w", err)
-	}
-
-	// prepare for notification
-	if err := prepareNotification(ctx); err != nil {
-		return fmt.Errorf("failed to prepare notification: %w", err)
-	}
-
 	// update sales for already completed rides
 	if _, err := db.ExecContext(
 		ctx,
@@ -307,6 +297,16 @@ func prepare(ctx context.Context) error {
 		return fmt.Errorf("failed to insert into chair_latest_distance: %w", err)
 	}
 
+	// load cache
+	if err := loadCache(ctx); err != nil {
+		return fmt.Errorf("failed to load cache: %w", err)
+	}
+
+	// prepare for notification
+	if err := prepareNotification(ctx); err != nil {
+		return fmt.Errorf("failed to prepare notification: %w", err)
+	}
+
 	return nil
 }
 
@@ -334,6 +334,15 @@ func loadCache(ctx context.Context) error {
 	}
 	for _, chairStat := range chairStats {
 		chairStatsCache.Store(chairStat.ChairID, chairStat.ChairStats)
+	}
+
+	// cache chair latest locations
+	var chairLatestLocations []ChairLatestLocation
+	if err := db.SelectContext(ctx, &chairLatestLocations, `SELECT chair_id, total_distance, latest_latitude, latest_longitude, latest_timestamp FROM chair_latest_location`); err != nil {
+		return fmt.Errorf("failed to get chair latest locations: %w", err)
+	}
+	for _, chairLatestLocation := range chairLatestLocations {
+		chairLatestLocationCache.Store(chairLatestLocation.ChairID, &chairLatestLocation)
 	}
 
 	return nil

@@ -32,6 +32,8 @@ var (
 	chairModelCache sync.Map
 	// chair stats
 	chairStatsCache sync.Map
+	// chair latest location
+	chairLatestLocationCache sync.Map
 
 	// owners
 	ownerCache sync.Map
@@ -209,4 +211,27 @@ func getChairCacheByAccessToken(ctx context.Context, accessToken string) (chair 
 	}
 	chairAccessTokenCache.Store(accessToken, chair)
 	return chair, nil
+}
+
+func getChairLatestLocationCache(ctx context.Context, chairID string) (latestLocation *ChairLatestLocation, err error) {
+	latestLocation = &ChairLatestLocation{}
+	if locationCached, found := chairLatestLocationCache.Load(chairID); found {
+		latestLocation = locationCached.(*ChairLatestLocation)
+		return latestLocation, nil
+	}
+	err = db.GetContext(ctx, &latestLocation, "SELECT * FROM chairs WHERE chair_id = ?", chairID)
+	if err != nil {
+		return latestLocation, err
+	}
+	return latestLocation, nil
+}
+
+func updateChairLatestLocationCache(ctx context.Context, chairID string, latestLocation *ChairLatestLocation) (err error) {
+	currentLatestLocation, err := getChairLatestLocationCache(ctx, chairID)
+	if err != nil {
+		return err
+	}
+	latestLocation.TotalDistance += currentLatestLocation.TotalDistance + calculateDistance(latestLocation.Latitude, latestLocation.Longitude, currentLatestLocation.Latitude, currentLatestLocation.Longitude)
+	chairLatestLocationCache.Store(chairID, latestLocation)
+	return nil
 }
