@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -714,14 +716,60 @@ type appGetNotificationResponseChairStats struct {
 	TotalEvaluationAvg float64 `json:"total_evaluation_avg"`
 }
 
-func appGetNotification(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	user := ctx.Value("user").(*User)
+func appGetNotificationSSE(w http.ResponseWriter, r *http.Request) {
+	go func() {
+		ctx := r.Context()
+		user := ctx.Value("user").(*User)
 
+		// ref: https://packagemain.tech/p/implementing-server-sent-events-in-go
+
+		// Set http headers required for SSE
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		// You may need this locally for CORS requests
+		// w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		// Create a channel for client disconnection
+		clientGone := r.Context().Done()
+
+		rc := http.NewResponseController(w)
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-clientGone:
+				fmt.Println("Client disconnected")
+				return
+			case <-t.C:
+				// Send an event to the client
+				// Here we send only the "data" field, but there are few others
+				data, err := appGetNotificationData(ctx, user)
+				if err != nil {
+					return
+				}
+				dataMarshal, err := json.Marshal(data)
+				if err != nil {
+					return
+				}
+				log.Printf("data: %s\n\n", string(dataMarshal))
+				if _, err = fmt.Fprintf(w, "data: %s\n\n", string(dataMarshal)); err != nil {
+					return
+				}
+				err = rc.Flush()
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
+}
+
+func appGetNotificationData(ctx context.Context, user *User) (*appGetNotificationResponseData, error) {
 	tx, err := db.Beginx()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return &appGetNotificationResponseData{}, err
 	}
 	defer tx.Rollback()
 
@@ -730,8 +778,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	status := ""
 	appChan, found := appNotifications.Load(user.ID)
 	if !found {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("notification channel for app not found: userID: %s", user.ID))
-		return
+		return &appGetNotificationResponseData{}, fmt.Errorf("notification channel for app not found: userID: %s", user.ID)
 	}
 	appChannel := appChan.(chan RideStatus)
 	select {
@@ -739,31 +786,24 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 		yetSentRideStatus = newStatus
 		status = yetSentRideStatus.Status
 		if ride, err = getRideCache(ctx, tx, newStatus.RideID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return &appGetNotificationResponseData{}, err
 		}
-	case <-time.After(time.Duration(PollingSec) * time.Second):
+	case <-time.After(1 * time.Microsecond):
 		if ride, err = getUserRideCache(ctx, tx, user.ID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				writeJSON(w, http.StatusOK, &appGetNotificationResponse{
-					RetryAfterMs: RetryAfterMs,
-				})
-				return
+				return &appGetNotificationResponseData{}, nil
 			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return &appGetNotificationResponseData{}, err
 		}
 		status, err = getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return &appGetNotificationResponseData{}, err
 		}
 	}
 
 	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, ride.PickupLatitude, ride.PickupLongitude, ride.DestinationLatitude, ride.DestinationLongitude)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return &appGetNotificationResponseData{}, err
 	}
 
 	response := &appGetNotificationResponse{
@@ -788,14 +828,12 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	if ride.ChairID.Valid {
 		chair := &Chair{}
 		if chair, err = getChairCache(ctx, tx, ride.ChairID.String); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair in appGetNotification: %w", err))
-			return
+			return &appGetNotificationResponseData{}, fmt.Errorf("failed to get chair in appGetNotification: %w", err)
 		}
 
 		stats, err := getChairStats(ctx, tx, chair.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return &appGetNotificationResponseData{}, err
 		}
 
 		response.Data.Chair = &appGetNotificationResponseChair{
@@ -809,17 +847,15 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	if yetSentRideStatus.ID != "" {
 		_, err := tx.ExecContext(ctx, `UPDATE ride_statuses SET app_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return &appGetNotificationResponseData{}, err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return &appGetNotificationResponseData{}, err
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	return response.Data, nil
 }
 
 type ChairStats struct {
