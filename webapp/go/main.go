@@ -85,7 +85,10 @@ type CoordinateToUpdate struct {
 }
 
 // channel to enqueue chair latest locations
-var updateCoordinateQueue chan CoordinateToUpdate
+var (
+	updateCoordinateQueue chan CoordinateToUpdate
+	insertRideStatusQueue chan RideStatus
+)
 
 func main() {
 	go standalone.Integrate(":8888")
@@ -95,6 +98,14 @@ func main() {
 		log.Println("start listening for updateCoordinateQueue")
 		for {
 			updateCoordinates()
+		}
+	}()
+
+	insertRideStatusQueue = make(chan RideStatus, 100000)
+	go func() {
+		log.Println("start listening for insertRideStatusQueue")
+		for {
+			insertRideStatuses()
 		}
 	}()
 

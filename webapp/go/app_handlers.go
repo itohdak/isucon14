@@ -354,17 +354,22 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rideStatusID := ulid.Make().String()
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
-		rideStatusID, rideID, "MATCHING",
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+	// if _, err := tx.ExecContext(
+	// 	ctx,
+	// 	`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
+	// 	rideStatusID, rideID, "MATCHING",
+	// ); err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "MATCHING")
 		notifyToChannel(user.ID, "", rideStatusID, rideID, "MATCHING")
+		insertRideStatusQueue <- RideStatus{
+			ID:     rideStatusID,
+			RideID: rideID,
+			Status: "MATCHING",
+		}
 	}
 
 	var rideCount int
@@ -598,14 +603,14 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rideStatusID := ulid.Make().String()
-	_, err = tx.ExecContext(
-		ctx,
-		`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
-		rideStatusID, rideID, "COMPLETED")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+	// _, err = tx.ExecContext(
+	// 	ctx,
+	// 	`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
+	// 	rideStatusID, rideID, "COMPLETED")
+	// if err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
 	_, err = tx.ExecContext(
 		ctx,
 		`UPDATE rides SET sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude)) WHERE id = ?`,
@@ -618,6 +623,11 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
 		notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, rideID, "COMPLETED")
+		insertRideStatusQueue <- RideStatus{
+			ID:     rideStatusID,
+			RideID: rideID,
+			Status: "COMPLETED",
+		}
 	}
 
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
