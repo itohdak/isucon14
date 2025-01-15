@@ -717,53 +717,52 @@ type appGetNotificationResponseChairStats struct {
 }
 
 func appGetNotificationSSE(w http.ResponseWriter, r *http.Request) {
-	go func() {
-		ctx := r.Context()
-		user := ctx.Value("user").(*User)
+	ctx := r.Context()
+	user := ctx.Value("user").(*User)
 
-		// ref: https://packagemain.tech/p/implementing-server-sent-events-in-go
+	// ref: https://packagemain.tech/p/implementing-server-sent-events-in-go
 
-		// Set http headers required for SSE
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
+	// Set http headers required for SSE
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
-		// You may need this locally for CORS requests
-		// w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Create a channel for client disconnection
+	clientGone := r.Context().Done()
 
-		// Create a channel for client disconnection
-		clientGone := r.Context().Done()
-
-		rc := http.NewResponseController(w)
-		t := time.NewTicker(time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-clientGone:
-				fmt.Println("Client disconnected")
+	rc := http.NewResponseController(w)
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-clientGone:
+			fmt.Println("Client disconnected")
+			return
+		case <-t.C:
+			// Send an event to the client
+			data, err := appGetNotificationData(ctx, user)
+			if err != nil {
+				log.Printf("failed to get app notification data: %w", err)
 				return
-			case <-t.C:
-				// Send an event to the client
-				// Here we send only the "data" field, but there are few others
-				data, err := appGetNotificationData(ctx, user)
-				if err != nil {
-					return
-				}
-				dataMarshal, err := json.Marshal(data)
-				if err != nil {
-					return
-				}
-				log.Printf("data: %s\n\n", string(dataMarshal))
-				if _, err = fmt.Fprintf(w, "data: %s\n\n", string(dataMarshal)); err != nil {
-					return
-				}
-				err = rc.Flush()
-				if err != nil {
-					return
-				}
+			}
+			dataMarshal, err := json.Marshal(data)
+			if err != nil {
+				log.Printf("failed to json marshal: %w", err)
+				return
+			}
+			// log.Printf("data: %s\n\n", string(dataMarshal))
+			if _, err = fmt.Fprintf(w, "data: %s\n\n", string(dataMarshal)); err != nil {
+				log.Printf("failed to write data: %w", err)
+				return
+			}
+			err = rc.Flush()
+			if err != nil {
+				log.Printf("failed to flush: %w", err)
+				return
 			}
 		}
-	}()
+	}
 }
 
 func appGetNotificationData(ctx context.Context, user *User) (*appGetNotificationResponseData, error) {
