@@ -76,7 +76,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chair_latest_location.latest_longitude AS longitude
 	FROM
 		chairs
-		LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
+		INNER JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
 	WHERE
 		chairs.is_available = TRUE
 		AND chairs.is_active = TRUE`); err != nil {
