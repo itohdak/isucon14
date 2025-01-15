@@ -732,16 +732,21 @@ func appGetNotificationSSE(w http.ResponseWriter, r *http.Request) {
 	clientGone := r.Context().Done()
 
 	rc := http.NewResponseController(w)
-	t := time.NewTicker(time.Second)
-	defer t.Stop()
+	appChan, found := appNotifications.Load(user.ID)
+	if !found {
+		log.Printf("[ERROR] notification channel for app not found: userID: %s", user.ID)
+		return
+	}
+	appChannel := appChan.(chan RideStatus)
+
 	for {
 		select {
 		case <-clientGone:
 			fmt.Println("Client disconnected")
 			return
-		case <-t.C:
+		case newStatus := <-appChannel:
 			// Send an event to the client
-			data, err := appGetNotificationData(ctx, user)
+			data, err := appGetNotificationData(ctx, user, &newStatus)
 			if err != nil {
 				log.Printf("failed to get app notification data: %w", err)
 				return
@@ -765,7 +770,7 @@ func appGetNotificationSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func appGetNotificationData(ctx context.Context, user *User) (*appGetNotificationResponseData, error) {
+func appGetNotificationData(ctx context.Context, user *User, newRideStatus *RideStatus) (*appGetNotificationResponseData, error) {
 	tx, err := db.Beginx()
 	if err != nil {
 		return &appGetNotificationResponseData{}, err
@@ -773,32 +778,24 @@ func appGetNotificationData(ctx context.Context, user *User) (*appGetNotificatio
 	defer tx.Rollback()
 
 	ride := &Ride{}
-	yetSentRideStatus := RideStatus{}
+	yetSentRideStatus := &RideStatus{}
 	status := ""
-	appChan, found := appNotifications.Load(user.ID)
-	if !found {
-		return &appGetNotificationResponseData{}, fmt.Errorf("notification channel for app not found: userID: %s", user.ID)
+	yetSentRideStatus = newRideStatus
+	status = yetSentRideStatus.Status
+	if ride, err = getRideCache(ctx, tx, newRideStatus.RideID); err != nil {
+		return &appGetNotificationResponseData{}, err
 	}
-	appChannel := appChan.(chan RideStatus)
-	select {
-	case newStatus := <-appChannel:
-		yetSentRideStatus = newStatus
-		status = yetSentRideStatus.Status
-		if ride, err = getRideCache(ctx, tx, newStatus.RideID); err != nil {
-			return &appGetNotificationResponseData{}, err
-		}
-	case <-time.After(1 * time.Microsecond):
-		if ride, err = getUserRideCache(ctx, tx, user.ID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return &appGetNotificationResponseData{}, nil
-			}
-			return &appGetNotificationResponseData{}, err
-		}
-		status, err = getLatestRideStatus(ctx, tx, ride.ID)
-		if err != nil {
-			return &appGetNotificationResponseData{}, err
-		}
-	}
+	// 	if ride, err = getUserRideCache(ctx, tx, user.ID); err != nil {
+	// 		if errors.Is(err, sql.ErrNoRows) {
+	// 			return &appGetNotificationResponseData{}, nil
+	// 		}
+	// 		return &appGetNotificationResponseData{}, err
+	// 	}
+	// 	status, err = getLatestRideStatus(ctx, tx, ride.ID)
+	// 	if err != nil {
+	// 		return &appGetNotificationResponseData{}, err
+	// 	}
+	// }
 
 	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, ride.PickupLatitude, ride.PickupLongitude, ride.DestinationLatitude, ride.DestinationLongitude)
 	if err != nil {
