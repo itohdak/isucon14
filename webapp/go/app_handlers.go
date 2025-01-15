@@ -547,10 +547,10 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 
 	result, err := tx.ExecContext(
 		ctx,
-		`UPDATE rides SET evaluation = ?, updated_at = ? WHERE id = ?`,
-		req.Evaluation, time.Now(), rideID)
+		`UPDATE rides SET evaluation = ?, updated_at = ?, sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude)) WHERE id = ?`,
+		req.Evaluation, time.Now(), initialFare, farePerDistance, rideID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to evaluate ride: %w", err))
 		return
 	}
 	if count, err := result.RowsAffected(); err != nil {
@@ -560,6 +560,17 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errors.New("ride not found"))
 		return
 	}
+	rideStatusID := ulid.Make().String()
+	commitCache := func() {
+		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
+		notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, rideID, "COMPLETED")
+		insertRideStatusQueue <- RideStatus{
+			ID:     rideStatusID,
+			RideID: rideID,
+			Status: "COMPLETED",
+		}
+	}
+
 	if _, err := tx.ExecContext(
 		ctx,
 		`UPDATE chairs SET is_available = ? WHERE id = ?`,
@@ -578,26 +589,6 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		stats.TotalRideCount += 1
 		stats.TotalEvaluation += int64(req.Evaluation)
 		chairStatsCache.Store(chairID, stats)
-	}
-
-	rideStatusID := ulid.Make().String()
-	_, err = tx.ExecContext(
-		ctx,
-		`UPDATE rides SET sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude)) WHERE id = ?`,
-		initialFare, farePerDistance, rideID,
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to update ride sales: %w", err))
-		return
-	}
-	commitCache := func() {
-		latestRideStatusCacheByRideID.Store(rideID, "COMPLETED")
-		notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, rideID, "COMPLETED")
-		insertRideStatusQueue <- RideStatus{
-			ID:     rideStatusID,
-			RideID: rideID,
-			Status: "COMPLETED",
-		}
 	}
 
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
@@ -639,13 +630,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := requestPaymentGatewayPostPayment(ctx, paymentGatewayURL, paymentToken.Token, paymentGatewayRequest, func() ([]Ride, error) {
-		rides := []Ride{}
-		if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at ASC`, ride.UserID); err != nil {
-			return nil, err
-		}
-		return rides, nil
-	}); err != nil {
+	if err := requestPaymentGatewayPostPayment(ctx, paymentGatewayURL, paymentToken.Token, paymentGatewayRequest); err != nil {
 		if errors.Is(err, erroredUpstream) {
 			writeError(w, http.StatusBadGateway, err)
 			return
