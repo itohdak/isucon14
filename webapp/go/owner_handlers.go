@@ -200,25 +200,41 @@ func ownerGetChairs(w http.ResponseWriter, r *http.Request) {
 	owner := ctx.Value("owner").(*Owner)
 
 	chairs := []chairWithDetail{}
-	if err := db.SelectContext(ctx, &chairs, `
-	SELECT
-		id,
-		owner_id,
-		name,
-		access_token,
-		model,
-		is_active,
-		created_at,
-		updated_at,
-		IFNULL(total_distance, 0) AS total_distance,
-		latest_timestamp AS total_distance_updated_at
-	FROM
-		chairs
-		LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
-	WHERE
-		owner_id = ?`, owner.ID); err != nil {
+	// if err := db.SelectContext(ctx, &chairs, `
+	// SELECT
+	// 	id,
+	// 	owner_id,
+	// 	name,
+	// 	access_token,
+	// 	model,
+	// 	is_active,
+	// 	created_at,
+	// 	updated_at,
+	// 	IFNULL(total_distance, 0) AS total_distance,
+	// 	latest_timestamp AS total_distance_updated_at
+	// FROM
+	// 	chairs
+	// 	LEFT JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
+	// WHERE
+	// 	owner_id = ?`, owner.ID); err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
+	if err := db.SelectContext(ctx, &chairs, `SELECT id, owner_id, name, access_token, model, is_active, created_at, updated_at FROM chairs WHERE owner_id = ?`, owner.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	for i, _ := range chairs {
+		latestLocation, err := getChairLatestLocationCache(ctx, chairs[i].ID)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair latest location from cache in ownerGetChairs: chairID: %s: %w", chairs[i].ID, err))
+				return
+			}
+			latestLocation.TotalDistance = 0
+		}
+		chairs[i].TotalDistance = latestLocation.TotalDistance
+		chairs[i].TotalDistanceUpdatedAt = latestLocation.UpdatedAt
 	}
 
 	res := ownerGetChairResponse{}

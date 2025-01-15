@@ -102,9 +102,9 @@ type Coupon struct {
 }
 
 type ChairLatestLocation struct {
-	ChairID       string    `db:"chair_id"`
-	TotalDistance int       `db:"total_distance"`
-	Latitude      int       `db:"latest_latitude"`
-	Longitude     int       `db:"latest_longitude"`
-	UpdatedAt     time.Time `db:"latest_timestamp"`
+	ChairID       string       `db:"chair_id"`
+	TotalDistance int          `db:"total_distance"`
+	Latitude      int          `db:"latest_latitude"`
+	Longitude     int          `db:"latest_longitude"`
+	UpdatedAt     sql.NullTime `db:"latest_timestamp"`
 }
