@@ -914,10 +914,8 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
 	nearbyChairsFromDB := []nearbyChairFromDB{}
-	if err := db.SelectContext(
-		ctx,
-		&nearbyChairsFromDB,
-		`SELECT
+	query := `
+		SELECT
 			chairs.id AS id,
 			chairs.name AS name,
 			chairs.model AS model,
@@ -929,10 +927,21 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			is_active = TRUE
 			AND is_available = TRUE
 			AND chair_id = chairs.id
-			AND ABS(latest_latitude - ?) + ABS(latest_longitude - ?) <= ?`,
-		coordinate.Latitude, coordinate.Longitude, distance,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select nearby chairs: %v", err))
+			AND sum_lat_lon >= :lat + :lon - :d
+			AND sum_lat_lon <= :lat + :lon + :d
+			AND sub_lat_lon >= :lat - :lon - :d
+			AND sub_lat_lon <= :lat - :lon + :d`
+	query, params, err := sqlx.Named(query, map[string]interface{}{
+		"lat": coordinate.Latitude,
+		"lon": coordinate.Longitude,
+		"d":   distance,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to prepare query: %w", err))
+		return
+	}
+	if err := db.SelectContext(ctx, &nearbyChairsFromDB, query, params...); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select nearby chairs: %w", err))
 		return
 	}
 

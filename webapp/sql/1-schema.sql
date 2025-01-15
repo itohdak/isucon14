@@ -47,7 +47,10 @@ CREATE TABLE chair_latest_location
   latest_timestamp   DATETIME(6)  NOT NULL,
   latest_latitude   INTEGER     NOT NULL COMMENT '経度',
   latest_longitude  INTEGER     NOT NULL COMMENT '緯度',
-  PRIMARY KEY (chair_id)
+  sum_lat_lon INTEGER GENERATED ALWAYS AS (latest_latitude + latest_longitude) COMMENT '経度+緯度',
+  sub_lat_lon INTEGER GENERATED ALWAYS AS (latest_latitude - latest_longitude) COMMENT '経度-緯度',
+  PRIMARY KEY (chair_id),
+  INDEX idx_chair_id_sum_sub (chair_id, sum_lat_lon, sub_lat_lon)
 )
   COMMENT = '椅子の移動距離の合計を管理するテーブル';
 
