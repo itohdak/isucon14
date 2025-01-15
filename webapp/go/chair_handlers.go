@@ -219,13 +219,13 @@ func updateCoordinates() {
 		return
 	}
 
-	if _, err := db.NamedExec(
-		`INSERT INTO chair_locations (id, chair_id, latitude, longitude, created_at) VALUES (:chair_location_id, :chair_id, :latitude, :longitude, :created_at)`,
-		coordinates,
-	); err != nil {
-		log.Printf("[ERROR] failed to insert into chair_locations: %w", err)
-		return
-	}
+	// if _, err := db.NamedExec(
+	// 	`INSERT INTO chair_locations (id, chair_id, latitude, longitude, created_at) VALUES (:chair_location_id, :chair_id, :latitude, :longitude, :created_at)`,
+	// 	coordinates,
+	// ); err != nil {
+	// 	log.Printf("[ERROR] failed to insert into chair_locations: %w", err)
+	// 	return
+	// }
 
 	if _, err := db.NamedExec(
 		`INSERT INTO
