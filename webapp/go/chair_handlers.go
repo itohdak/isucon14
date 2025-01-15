@@ -151,10 +151,6 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		if status != "COMPLETED" && status != "CANCELED" {
 			if req.Latitude == ride.PickupLatitude && req.Longitude == ride.PickupLongitude && status == "ENROUTE" {
 				rideStatusID := ulid.Make().String()
-				// if _, err := tx.ExecContext(ctx, "INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)", rideStatusID, ride.ID, "PICKUP"); err != nil {
-				// 	writeError(w, http.StatusInternalServerError, err)
-				// 	return
-				// }
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "PICKUP")
 					if ride.ChairID.Valid {
@@ -172,10 +168,6 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 
 			if req.Latitude == ride.DestinationLatitude && req.Longitude == ride.DestinationLongitude && status == "CARRYING" {
 				rideStatusID := ulid.Make().String()
-				// if _, err := tx.ExecContext(ctx, "INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)", rideStatusID, ride.ID, "ARRIVED"); err != nil {
-				// 	writeError(w, http.StatusInternalServerError, err)
-				// 	return
-				// }
 				commitCache = func() {
 					latestRideStatusCacheByRideID.Store(ride.ID, "ARRIVED")
 					if ride.ChairID.Valid {
@@ -437,10 +429,6 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 	// Acknowledge the ride
 	case "ENROUTE":
 		rideStatusID := ulid.Make().String()
-		// if _, err := tx.ExecContext(ctx, "INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)", rideStatusID, ride.ID, "ENROUTE"); err != nil {
-		// 	writeError(w, http.StatusInternalServerError, err)
-		// 	return
-		// }
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "ENROUTE")
 			notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "ENROUTE")
@@ -462,10 +450,6 @@ func chairPostRideStatus(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rideStatusID := ulid.Make().String()
-		// if _, err := tx.ExecContext(ctx, "INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)", rideStatusID, ride.ID, "CARRYING"); err != nil {
-		// 	writeError(w, http.StatusInternalServerError, err)
-		// 	return
-		// }
 		commitCache = func() {
 			latestRideStatusCacheByRideID.Store(ride.ID, "CARRYING")
 			notifyToChannel(ride.UserID, ride.ChairID.String, rideStatusID, ride.ID, "CARRYING")

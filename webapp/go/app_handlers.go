@@ -320,24 +320,10 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	rides := []Ride{}
-	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE user_id = ?`, user.ID); err != nil {
+	var continuingRideCount int
+	if err := tx.GetContext(ctx, &continuingRideCount, `SELECT count(1) from rides where evaluation IS NULL AND user_id = ?`, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
-		return
 	}
-
-	continuingRideCount := 0
-	for _, ride := range rides {
-		status, err := getLatestRideStatus(ctx, tx, ride.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if status != "COMPLETED" {
-			continuingRideCount++
-		}
-	}
-
 	if continuingRideCount > 0 {
 		writeError(w, http.StatusConflict, errors.New("ride already exists"))
 		return
@@ -354,14 +340,6 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rideStatusID := ulid.Make().String()
-	// if _, err := tx.ExecContext(
-	// 	ctx,
-	// 	`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
-	// 	rideStatusID, rideID, "MATCHING",
-	// ); err != nil {
-	// 	writeError(w, http.StatusInternalServerError, err)
-	// 	return
-	// }
 	commitCache := func() {
 		latestRideStatusCacheByRideID.Store(rideID, "MATCHING")
 		notifyToChannel(user.ID, "", rideStatusID, rideID, "MATCHING")
@@ -603,14 +581,6 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rideStatusID := ulid.Make().String()
-	// _, err = tx.ExecContext(
-	// 	ctx,
-	// 	`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
-	// 	rideStatusID, rideID, "COMPLETED")
-	// if err != nil {
-	// 	writeError(w, http.StatusInternalServerError, err)
-	// 	return
-	// }
 	_, err = tx.ExecContext(
 		ctx,
 		`UPDATE rides SET sales = ? + ? * (ABS(pickup_latitude - destination_latitude) + ABS(pickup_longitude - destination_longitude)) WHERE id = ?`,
