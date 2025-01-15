@@ -247,7 +247,7 @@ func updateCoordinates() {
 func insertRideStatuses() {
 	var maxLength = 2000
 	var rideStatuses = make([]RideStatus, 0, maxLength)
-	var timeout = 30 * time.Millisecond
+	var timeout = 500 * time.Millisecond
 	now := time.Now()
 	for {
 		select {
