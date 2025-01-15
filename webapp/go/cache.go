@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -111,6 +113,9 @@ func getRideCouponCache(ctx context.Context, tx *sqlx.Tx, rideID string) (coupon
 		return coupon, nil
 	}
 	if err = tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", rideID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			rideCouponCache.Store(rideID, Coupon{Discount: 0})
+		}
 		return coupon, err
 	}
 	rideCouponCache.Store(rideID, coupon)
