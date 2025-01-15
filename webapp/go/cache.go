@@ -219,7 +219,7 @@ func getChairLatestLocationCache(ctx context.Context, chairID string) (latestLoc
 		latestLocation = locationCached.(*ChairLatestLocation)
 		return latestLocation, nil
 	}
-	err = db.GetContext(ctx, &latestLocation, "SELECT * FROM chairs WHERE chair_id = ?", chairID)
+	err = db.GetContext(ctx, latestLocation, "SELECT chair_id, total_distance, latest_latitude, latest_longitude, latest_timestamp FROM chair_latest_location WHERE chair_id = ?", chairID)
 	if err != nil {
 		return latestLocation, err
 	}
