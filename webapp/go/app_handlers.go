@@ -925,6 +925,9 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	for _, validChair := range validChairs {
 		latestLocation, err := getChairLatestLocationCache(ctx, validChair.ID)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair latest location from cache: chairID: %s: %w", validChair.ID, err))
 		}
 		if calculateDistance(latestLocation.Latitude, latestLocation.Longitude, coordinate.Latitude, coordinate.Longitude) <= distance {
