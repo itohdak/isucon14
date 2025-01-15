@@ -337,12 +337,12 @@ func chairGetNotificationData(ctx context.Context, chair *Chair, newRideStatus *
 		return &chairGetNotificationResponseData{}, fmt.Errorf("failed to get user in chairGetNotification: %w", err)
 	}
 
-	if yetSentRideStatus.ID != "" {
-		_, err := tx.ExecContext(ctx, `UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
-		if err != nil {
-			return &chairGetNotificationResponseData{}, err
-		}
-	}
+	// if yetSentRideStatus.ID != "" {
+	// 	_, err := tx.ExecContext(ctx, `UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
+	// 	if err != nil {
+	// 		return &chairGetNotificationResponseData{}, err
+	// 	}
+	// }
 
 	if err := tx.Commit(); err != nil {
 		return &chairGetNotificationResponseData{}, err
