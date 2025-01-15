@@ -930,14 +930,15 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			is_active = TRUE
 			AND is_available = TRUE
 			AND chair_id = chairs.id
-			AND sum_lat_lon >= :lat + :lon - :d
-			AND sum_lat_lon <= :lat + :lon + :d
-			AND sub_lat_lon >= :lat - :lon - :d
-			AND sub_lat_lon <= :lat - :lon + :d`
+			AND sum_lat_lon >= :a
+			AND sum_lat_lon <= :b
+			AND sub_lat_lon >= :c
+			AND sub_lat_lon <= :d`
 	query, params, err := sqlx.Named(query, map[string]interface{}{
-		"lat": coordinate.Latitude,
-		"lon": coordinate.Longitude,
-		"d":   distance,
+		"a": coordinate.Latitude + coordinate.Longitude - distance,
+		"b": coordinate.Latitude + coordinate.Longitude + distance,
+		"c": coordinate.Latitude - coordinate.Longitude - distance,
+		"d": coordinate.Latitude - coordinate.Longitude + distance,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to prepare query: %w", err))
