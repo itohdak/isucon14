@@ -68,7 +68,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		userID, "CP_NEW2024", 3000,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert campaign coupon: %w", err))
 		return
 	}
 
@@ -78,7 +78,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		var coupons []Coupon
 		err = tx.SelectContext(ctx, &coupons, "SELECT * FROM coupons WHERE code = ? FOR UPDATE", "INV_"+*req.InvitationCode)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select coupon for count: %w", err))
 			return
 		}
 		if len(coupons) >= 3 {
@@ -94,7 +94,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, errors.New("この招待コードは使用できません。"))
 				return
 			}
-			writeError(w, http.StatusInternalServerError, err)
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select user by invitation_code: %w", err))
 			return
 		}
 
@@ -105,7 +105,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 			userID, "INV_"+*req.InvitationCode, 1500,
 		)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert invitation coupon: %w", err))
 			return
 		}
 		// 招待した人にもRewardを付与
@@ -115,7 +115,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 			inviter.ID, "RWD_"+*req.InvitationCode, 1000,
 		)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert coupon to inviter: %w", err))
 			return
 		}
 	}
