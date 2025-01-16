@@ -349,6 +349,7 @@ func loadCache(ctx context.Context) error {
 	); err != nil {
 		return fmt.Errorf("failed to get chair stats: %w", err)
 	}
+	chairStatsCache.Clear()
 	for _, chairStat := range chairStats {
 		chairStatsCache.Store(chairStat.ChairID, chairStat.ChairStats)
 	}
@@ -358,6 +359,7 @@ func loadCache(ctx context.Context) error {
 	if err := db.SelectContext(ctx, &chairLatestLocations, `SELECT chair_id, total_distance, latest_latitude, latest_longitude, latest_timestamp FROM chair_latest_location`); err != nil {
 		return fmt.Errorf("failed to get chair latest locations: %w", err)
 	}
+	chairLatestLocationCache.Clear()
 	for _, chairLatestLocation := range chairLatestLocations {
 		chairLatestLocationCache.Store(chairLatestLocation.ChairID, &chairLatestLocation)
 	}
@@ -390,6 +392,7 @@ func loadCache(ctx context.Context) error {
 	`); err != nil {
 		return fmt.Errorf("failed to get valid chairs: %w", err)
 	}
+	validChairsCache.Clear()
 	for _, validChairID := range validChairIDs {
 		validChairsCache.Store(validChairID, struct{}{})
 	}
@@ -403,6 +406,7 @@ func prepareNotification(ctx context.Context) error {
 	if err := db.SelectContext(ctx, &userIDs, `SELECT id FROM users`); err != nil {
 		return fmt.Errorf("failed to get user IDs: %w", err)
 	}
+	appNotifications.Clear()
 	for _, userID := range userIDs {
 		createNewChannelForUser(userID)
 	}
@@ -412,6 +416,7 @@ func prepareNotification(ctx context.Context) error {
 	if err := db.SelectContext(ctx, &chairIDs, `SELECT id FROM chairs`); err != nil {
 		return fmt.Errorf("failed to get ride IDs: %w", err)
 	}
+	chairNotifications.Clear()
 	for _, chairID := range chairIDs {
 		createNewChannelForChair(chairID)
 	}
