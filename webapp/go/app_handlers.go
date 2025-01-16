@@ -71,18 +71,34 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert campaign coupon: %w", err))
 		return
 	}
+	// 新規会員に使用可能クーポンを追加
+	_, err = tx.NamedExecContext(
+		ctx,
+		"INSERT INTO available_coupons (code, seq) VALUES (:code, 1), (:code, 2), (:code, 3)",
+		struct {
+			Code string `db:"code"`
+		}{
+			Code: "INV_" + invitationCode,
+		})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert available coupons: %w", err))
+		return
+	}
 
 	// 招待コードを使った登録
 	if req.InvitationCode != nil && *req.InvitationCode != "" {
 		// 招待する側の招待数をチェック
-		var coupons []Coupon
-		err = tx.SelectContext(ctx, &coupons, "SELECT * FROM coupons WHERE code = ? FOR UPDATE", "INV_"+*req.InvitationCode)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select coupon for count: %w", err))
-			return
+		var coupon struct {
+			Code string `db:"code"`
+			Seq  int    `db:"seq"`
 		}
-		if len(coupons) >= 3 {
-			writeError(w, http.StatusBadRequest, errors.New("この招待コードは使用できません。"))
+		err = tx.GetContext(ctx, &coupon, "SELECT * FROM available_coupons WHERE code = ? LIMIT 1 FOR UPDATE SKIP LOCKED", "INV_"+*req.InvitationCode)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusBadRequest, errors.New("この招待コードは使用できません。"))
+				return
+			}
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select coupon for count: %w", err))
 			return
 		}
 
@@ -116,6 +132,12 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert coupon to inviter: %w", err))
+			return
+		}
+		// 招待者の使用可能クーポンを削除
+		_, err = tx.ExecContext(ctx, "DELETE FROM available_coupons WHERE code = ? AND seq = ?", coupon.Code, coupon.Seq)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to delete available coupon: %w", err))
 			return
 		}
 	}

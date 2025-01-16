@@ -297,6 +297,22 @@ func prepare(ctx context.Context) error {
 		return fmt.Errorf("failed to insert into chair_latest_distance: %w", err)
 	}
 
+	// fill available_coupons
+	var couponCounts []struct {
+		Code  string `db:"code"`
+		Count int    `db:"count"`
+	}
+	if err := db.SelectContext(ctx, &couponCounts, "SELECT code, 3-COUNT(1) AS count FROM coupons WHERE code LIKE 'INV_%' GROUP BY code HAVING count > 0"); err != nil {
+		return fmt.Errorf("failed to count available coupon counts")
+	}
+	for _, couponCount := range couponCounts {
+		for i := 0; i < couponCount.Count; i++ {
+			if _, err := db.ExecContext(ctx, "INSERT INTO available_coupons (code, seq) VALUES (?, ?)", couponCount.Code, i+1); err != nil {
+				return fmt.Errorf("failed to insert available coupons: code: %s seq: %d", couponCount.Code, i+1)
+			}
+		}
+	}
+
 	// load cache
 	if err := loadCache(ctx); err != nil {
 		return fmt.Errorf("failed to load cache: %w", err)

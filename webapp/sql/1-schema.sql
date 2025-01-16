@@ -160,3 +160,11 @@ CREATE TABLE coupons
   INDEX idx_code (code)
 )
   COMMENT 'クーポンテーブル';
+
+DROP TABLE IF EXISTS available_coupons;
+CREATE TABLE available_coupons
+(
+  code VARCHAR(255) NOT NULL,
+  seq  TINYINT(2) NOT NULL,
+  PRIMARY KEY (code, seq)
+);
