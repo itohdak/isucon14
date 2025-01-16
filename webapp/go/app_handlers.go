@@ -168,6 +168,11 @@ type appPostPaymentMethodsRequest struct {
 	Token string `json:"token"`
 }
 
+type PaymentMethod struct {
+	UserID string `db:"user_id"`
+	Token  string `db:"token"`
+}
+
 func appPostPaymentMethods(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := &appPostPaymentMethodsRequest{}
@@ -182,18 +187,45 @@ func appPostPaymentMethods(w http.ResponseWriter, r *http.Request) {
 
 	user := ctx.Value("user").(*User)
 
-	_, err := db.ExecContext(
-		ctx,
-		`INSERT INTO payment_tokens (user_id, token) VALUES (?, ?)`,
-		user.ID,
-		req.Token,
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	insertPaymentMethodsQueue <- PaymentMethod{
+		UserID: user.ID,
+		Token:  req.Token,
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func insertPaymentTokens() {
+	var maxLength = 2000
+	var paymentMethods = make([]PaymentMethod, 0, maxLength)
+	var timeout = 50 * time.Millisecond
+	now := time.Now()
+	for {
+		select {
+		case paymentMethod := <-insertPaymentMethodsQueue:
+			paymentMethods = append(paymentMethods, paymentMethod)
+		case <-time.After(1 * time.Microsecond):
+			break
+		}
+		if len(paymentMethods) == maxLength {
+			break
+		}
+		if time.Since(now) > timeout {
+			break
+		}
+	}
+	if len(paymentMethods) == 0 {
+		return
+	}
+
+	if _, err := db.NamedExec(
+		`INSERT INTO payment_tokens (user_id, token) VALUES (:user_id, :token)`,
+		paymentMethods,
+	); err != nil {
+		log.Printf("[ERROR] failed to bulk insert into payment_tokens: %w: paymentMethods: %v", err, paymentMethods)
+		return
+	}
+	log.Printf("[INFO] paymentMethods queue length: %d, dequeued length: %d", len(insertPaymentMethodsQueue), len(paymentMethods))
 }
 
 type getAppRidesResponse struct {

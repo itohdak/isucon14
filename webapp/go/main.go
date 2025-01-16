@@ -59,8 +59,9 @@ type CoordinateToUpdate struct {
 
 // channel to enqueue chair latest locations
 var (
-	updateCoordinateQueue chan CoordinateToUpdate
-	insertRideStatusQueue chan RideStatus
+	updateCoordinateQueue     chan CoordinateToUpdate
+	insertRideStatusQueue     chan RideStatus
+	insertPaymentMethodsQueue chan PaymentMethod
 )
 
 func main() {
@@ -79,6 +80,14 @@ func main() {
 		log.Println("start listening for insertRideStatusQueue")
 		for {
 			insertRideStatuses()
+		}
+	}()
+
+	insertPaymentMethodsQueue = make(chan PaymentMethod, 100000)
+	go func() {
+		log.Println("start listening for insertPaymentMethodsQueue")
+		for {
+			insertPaymentTokens()
 		}
 	}()
 
