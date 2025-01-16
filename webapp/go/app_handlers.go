@@ -611,6 +611,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		stats.TotalRideCount += 1
 		stats.TotalEvaluation += int64(req.Evaluation)
 		chairStatsCache.Store(chairID, stats)
+		validChairsCache.Store(chairID, struct{}{})
 	}
 
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE id = ?`, rideID); err != nil {
@@ -939,24 +940,29 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	// 	})
 	// }
 
-	var validChairs []Chair
-	if err = db.SelectContext(ctx, &validChairs, "SELECT id, name, model FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
+	var validChairIDs []string
+	validChairIDs, err = getValidChairIDsCache(ctx)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select valid chairs in appGetNearbyChairs: %w", err))
 		return
 	}
-	for _, validChair := range validChairs {
-		latestLocation, err := getChairLatestLocationCache(ctx, validChair.ID)
+	for _, validChairID := range validChairIDs {
+		latestLocation, err := getChairLatestLocationCache(ctx, validChairID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair latest location from cache: chairID: %s: %w", validChair.ID, err))
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair latest location from cache: chairID: %s: %w", validChairID, err))
+		}
+		chair, err := getChairCache(ctx, db, validChairID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to get chair from cache in appGetNearbyChairs: chairID: %s: %w", validChairID, err))
 		}
 		if calculateDistance(latestLocation.Latitude, latestLocation.Longitude, coordinate.Latitude, coordinate.Longitude) <= distance {
 			nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
-				ID:    validChair.ID,
-				Name:  validChair.Name,
-				Model: validChair.Model,
+				ID:    chair.ID,
+				Name:  chair.Name,
+				Model: chair.Model,
 				CurrentCoordinate: Coordinate{
 					Latitude:  latestLocation.Latitude,
 					Longitude: latestLocation.Longitude,

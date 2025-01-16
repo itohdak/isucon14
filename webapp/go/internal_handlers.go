@@ -179,6 +179,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chairRideCache.Delete(matchedChairID)
 		rideCache.Delete(matchedRideID)
 		notifyToChannel("", matchedChairID, rideStatusMap[matchedRideID], matchedRideID, "MATCHING")
+		validChairsCache.Delete(matchedChairID)
 
 		// matchedString += fmt.Sprintf("[internal_matcher] %s,%s,%d,%d,%d,%d,%d,%d\n", matchedChairID, matchedRideID, match.Ride.PickupLatitude, match.Ride.PickupLongitude, match.Ride.DestinationLatitude, match.Ride.DestinationLongitude, match.Chair.Latitude, match.Chair.Longitude)
 	}

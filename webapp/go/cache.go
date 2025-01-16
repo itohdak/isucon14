@@ -34,6 +34,8 @@ var (
 	chairStatsCache sync.Map
 	// chair latest location
 	chairLatestLocationCache sync.Map
+	// valid chairs
+	validChairsCache sync.Map
 
 	// owners
 	ownerCache sync.Map
@@ -55,7 +57,7 @@ func getUserCache(ctx context.Context, tx *sqlx.Tx, userID string) (user *User, 
 	return user, nil
 }
 
-func getChairCache(ctx context.Context, tx *sqlx.Tx, chairID string) (chair *Chair, err error) {
+func getChairCache(ctx context.Context, tx executableGet, chairID string) (chair *Chair, err error) {
 	chair = &Chair{}
 	if chairCached, found := chairCache.Load(chairID); found {
 		chair = chairCached.(*Chair)
@@ -244,4 +246,19 @@ func updateChairLatestLocationCache(ctx context.Context, chairID string, latestL
 	latestLocation.TotalDistance += currentLatestLocation.TotalDistance + calculateDistance(latestLocation.Latitude, latestLocation.Longitude, currentLatestLocation.Latitude, currentLatestLocation.Longitude)
 	chairLatestLocationCache.Store(chairID, latestLocation)
 	return nil
+}
+
+func getValidChairIDsCache(ctx context.Context) (validChairIDs []string, err error) {
+	validChairIDs = []string{}
+	validChairsCache.Range(func(key, value interface{}) bool {
+		validChairIDs = append(validChairIDs, key.(string))
+		return true
+	})
+	if err = db.SelectContext(ctx, &validChairIDs, "SELECT id FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
+		return validChairIDs, err
+	}
+	for _, validChair := range validChairIDs {
+		validChairsCache.Store(validChair, struct{}{})
+	}
+	return validChairIDs, nil
 }
