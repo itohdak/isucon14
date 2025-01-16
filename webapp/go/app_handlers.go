@@ -918,7 +918,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	var validChairs []Chair
-	if err = db.SelectContext(ctx, &validChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
+	if err = db.SelectContext(ctx, &validChairs, "SELECT id, name, model FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select valid chairs in appGetNearbyChairs: %w", err))
 		return
 	}
