@@ -155,19 +155,19 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		rideIDs = append(rideIDs, match.Ride.ID)
 	}
 
-	query := "UPDATE chairs SET is_available = :isAvailable WHERE id IN (:chairIDs)"
-	query, params, _ := sqlx.Named(query, map[string]interface{}{
-		"isAvailable": false,
-		"chairIDs":    chairIDs,
-	})
-	query, params, _ = sqlx.In(query, params...)
-	if _, err := db.ExecContext(ctx, query, params...); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update chairs: chairIDs: %s: %w", chairIDs, err))
-		return
-	}
+	// query := "UPDATE chairs SET is_available = :isAvailable WHERE id IN (:chairIDs)"
+	// query, params, _ := sqlx.Named(query, map[string]interface{}{
+	// 	"isAvailable": false,
+	// 	"chairIDs":    chairIDs,
+	// })
+	// query, params, _ = sqlx.In(query, params...)
+	// if _, err := db.ExecContext(ctx, query, params...); err != nil {
+	// 	writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update chairs: chairIDs: %s: %w", chairIDs, err))
+	// 	return
+	// }
 
-	query = "UPDATE rides SET chair_id = ELT(FIELD(id, :rideIDs), :chairIDs), updated_at = :updatedAt WHERE id IN (:rideIDs)"
-	query, params, _ = sqlx.Named(query, map[string]interface{}{
+	query := "UPDATE rides SET chair_id = ELT(FIELD(id, :rideIDs), :chairIDs), updated_at = :updatedAt WHERE id IN (:rideIDs)"
+	query, params, _ := sqlx.Named(query, map[string]interface{}{
 		"rideIDs":   rideIDs,
 		"chairIDs":  chairIDs,
 		"updatedAt": time.Now(),

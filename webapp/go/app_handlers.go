@@ -595,14 +595,14 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if _, err := tx.ExecContext(
-		ctx,
-		`UPDATE chairs SET is_available = ? WHERE id = ?`,
-		true, ride.ChairID,
-	); err != nil {
-		writeError(w, http.StatusNotFound, fmt.Errorf("failed to update chair availability to true: chair_id: %s: %w", ride.ChairID, err))
-		return
-	}
+	// if _, err := tx.ExecContext(
+	// 	ctx,
+	// 	`UPDATE chairs SET is_available = ? WHERE id = ?`,
+	// 	true, ride.ChairID,
+	// ); err != nil {
+	// 	writeError(w, http.StatusNotFound, fmt.Errorf("failed to update chair availability to true: chair_id: %s: %w", ride.ChairID, err))
+	// 	return
+	// }
 	commitChairStatsCache := func() {
 		chairID := ride.ChairID.String
 		statsCached, found := chairStatsCache.Load(chairID)

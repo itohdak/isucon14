@@ -230,14 +230,6 @@ func prepare(ctx context.Context) error {
 		return fmt.Errorf("failed to update sales in rides: %w", err)
 	}
 
-	// update is_available for free chairs
-	if _, err := db.ExecContext(
-		ctx,
-		`UPDATE chairs SET is_available = 0 WHERE (SELECT COUNT(*) FROM rides WHERE chair_id = chairs.id AND evaluation IS NULL)`,
-	); err != nil {
-		return fmt.Errorf("failed to update is_available in chairs: %w", err)
-	}
-
 	// store chair latest distance/location into chair_latest_location
 	if _, err := db.ExecContext(ctx, `
 	INSERT INTO
@@ -363,7 +355,30 @@ func loadCache(ctx context.Context) error {
 
 	// cache valid chairs
 	var validChairIDs []int
-	if err := db.SelectContext(ctx, &validChairIDs, "SELECT id FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
+	if err := db.SelectContext(ctx, &validChairIDs, `
+	WITH availabilities AS (
+		SELECT
+			chairs.id AS chair_id,
+			COUNT(*) = 0 AS is_available
+		FROM
+			rides,
+			chairs
+		WHERE
+			chair_id = chairs.id
+			AND evaluation IS NULL
+		GROUP BY
+			chair_id
+	)
+	SELECT
+		id
+	FROM
+		chairs,
+		availabilities
+	WHERE
+		chairs.id = availabilities.chair_id
+		AND is_active = TRUE
+		AND availabilities.is_available = TRUE;
+	`); err != nil {
 		return fmt.Errorf("failed to get valid chairs: %w", err)
 	}
 	for _, validChairID := range validChairIDs {
