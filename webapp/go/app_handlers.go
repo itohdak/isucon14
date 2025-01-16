@@ -64,8 +64,8 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 	// 初回登録キャンペーンのクーポンを付与
 	_, err = tx.ExecContext(
 		ctx,
-		"INSERT INTO coupons (user_id, code, discount) VALUES (?, ?, ?)",
-		userID, "CP_NEW2024", 3000,
+		"INSERT INTO coupons (id, user_id, code, discount) VALUES (?, ?, ?, ?)",
+		userID+"_CP_NEW2024", userID, "CP_NEW2024", 3000,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert campaign coupon: %w", err))
@@ -117,18 +117,20 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		// 招待クーポン付与
 		_, err = tx.ExecContext(
 			ctx,
-			"INSERT INTO coupons (user_id, code, discount) VALUES (?, ?, ?)",
-			userID, "INV_"+*req.InvitationCode, 1500,
+			"INSERT INTO coupons (id, user_id, code, discount) VALUES (?, ?, ?, ?)",
+			userID+"_INV_"+*req.InvitationCode, userID, "INV_"+*req.InvitationCode, 1500,
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert invitation coupon: %w", err))
 			return
 		}
 		// 招待した人にもRewardを付与
+		unixNano := time.Now().UnixNano()
+		code := fmt.Sprintf("RWD_%s_%d", *req.InvitationCode, unixNano/1000000)
 		_, err = tx.ExecContext(
 			ctx,
-			"INSERT INTO coupons (user_id, code, discount) VALUES (?, CONCAT(?, '_', FLOOR(UNIX_TIMESTAMP(NOW(3))*1000)), ?)",
-			inviter.ID, "RWD_"+*req.InvitationCode, 1000,
+			"INSERT INTO coupons (id, user_id, code, discount) VALUES (?, ?, ?, ?)",
+			inviter.ID+"_"+code, inviter.ID, code, 1000,
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to insert coupon to inviter: %w", err))

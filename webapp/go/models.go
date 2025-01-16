@@ -94,6 +94,7 @@ type Owner struct {
 }
 
 type Coupon struct {
+	ID        string    `db:"id"`
 	UserID    string    `db:"user_id"`
 	Code      string    `db:"code"`
 	Discount  int       `db:"discount"`
