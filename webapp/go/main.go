@@ -362,7 +362,13 @@ func loadCache(ctx context.Context) error {
 	}
 
 	// cache valid chairs
-	_, _ = getValidChairIDsCache(ctx)
+	var validChairIDs []int
+	if err := db.SelectContext(ctx, &validChairIDs, "SELECT id FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
+		return fmt.Errorf("failed to get valid chairs: %w", err)
+	}
+	for _, validChairID := range validChairIDs {
+		validChairsCache.Store(validChairID, struct{}{})
+	}
 
 	return nil
 }

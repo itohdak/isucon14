@@ -254,11 +254,5 @@ func getValidChairIDsCache(ctx context.Context) (validChairIDs []string, err err
 		validChairIDs = append(validChairIDs, key.(string))
 		return true
 	})
-	if err = db.SelectContext(ctx, &validChairIDs, "SELECT id FROM chairs WHERE is_active = TRUE AND is_available = TRUE"); err != nil {
-		return validChairIDs, err
-	}
-	for _, validChair := range validChairIDs {
-		validChairsCache.Store(validChair, struct{}{})
-	}
 	return validChairIDs, nil
 }
