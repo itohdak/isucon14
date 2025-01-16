@@ -895,50 +895,6 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	coordinate := Coordinate{Latitude: lat, Longitude: lon}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
-	// nearbyChairsFromDB := []nearbyChairFromDB{}
-	// query := `
-	// 	SELECT
-	// 		chairs.id AS id,
-	// 		chairs.name AS name,
-	// 		chairs.model AS model,
-	// 		latest_latitude AS latitude,
-	// 		latest_longitude AS longitude
-	// 	FROM
-	// 		chairs, chair_latest_location
-	// 	WHERE
-	// 		is_active = TRUE
-	// 		AND is_available = TRUE
-	// 		AND chair_id = chairs.id
-	// 		AND sum_lat_lon >= :a
-	// 		AND sum_lat_lon <= :b
-	// 		AND sub_lat_lon >= :c
-	// 		AND sub_lat_lon <= :d`
-	// query, params, err := sqlx.Named(query, map[string]interface{}{
-	// 	"a": coordinate.Latitude + coordinate.Longitude - distance,
-	// 	"b": coordinate.Latitude + coordinate.Longitude + distance,
-	// 	"c": coordinate.Latitude - coordinate.Longitude - distance,
-	// 	"d": coordinate.Latitude - coordinate.Longitude + distance,
-	// })
-	// if err != nil {
-	// 	writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to prepare query: %w", err))
-	// 	return
-	// }
-	// if err := db.SelectContext(ctx, &nearbyChairsFromDB, query, params...); err != nil {
-	// 	writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to select nearby chairs: %w", err))
-	// 	return
-	// }
-
-	// for _, nearbyChair := range nearbyChairsFromDB {
-	// 	nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
-	// 		ID:    nearbyChair.ID,
-	// 		Name:  nearbyChair.Name,
-	// 		Model: nearbyChair.Model,
-	// 		CurrentCoordinate: Coordinate{
-	// 			Latitude:  nearbyChair.Latitude,
-	// 			Longitude: nearbyChair.Longitude,
-	// 		},
-	// 	})
-	// }
 
 	var validChairIDs []string
 	validChairIDs, err = getValidChairIDsCache(ctx)
