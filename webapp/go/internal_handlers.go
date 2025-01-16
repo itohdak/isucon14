@@ -69,20 +69,42 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	chairs := []ChairWithLatLon{}
-	if err := db.Select(&chairs, `
-	SELECT
-		chairs.*,
-		chair_latest_location.latest_latitude AS latitude,
-		chair_latest_location.latest_longitude AS longitude
-	FROM
-		chairs
-		INNER JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
-	WHERE
-		chairs.is_available = TRUE
-		AND chairs.is_active = TRUE`); err != nil {
+	validChairIDs, err := getValidChairIDsCache(ctx)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	for _, validChairID := range validChairIDs {
+		chair, err := getChairCache(ctx, db, validChairID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		chairLocation, err := getChairLatestLocationCache(ctx, chair.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		chairs = append(chairs, ChairWithLatLon{
+			ID:        chair.ID,
+			Latitude:  chairLocation.Latitude,
+			Longitude: chairLocation.Longitude,
+		})
+	}
+	// if err := db.Select(&chairs, `
+	// SELECT
+	// 	chairs.*,
+	// 	chair_latest_location.latest_latitude AS latitude,
+	// 	chair_latest_location.latest_longitude AS longitude
+	// FROM
+	// 	chairs
+	// 	INNER JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
+	// WHERE
+	// 	chairs.is_available = TRUE
+	// 	AND chairs.is_active = TRUE`); err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
 	if len(chairs) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
