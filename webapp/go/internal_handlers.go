@@ -91,20 +91,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			Longitude: chairLocation.Longitude,
 		})
 	}
-	// if err := db.Select(&chairs, `
-	// SELECT
-	// 	chairs.*,
-	// 	chair_latest_location.latest_latitude AS latitude,
-	// 	chair_latest_location.latest_longitude AS longitude
-	// FROM
-	// 	chairs
-	// 	INNER JOIN chair_latest_location ON chairs.id = chair_latest_location.chair_id
-	// WHERE
-	// 	chairs.is_available = TRUE
-	// 	AND chairs.is_active = TRUE`); err != nil {
-	// 	writeError(w, http.StatusInternalServerError, err)
-	// 	return
-	// }
 	if len(chairs) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -154,17 +140,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chairIDs = append(chairIDs, match.Chair.ID)
 		rideIDs = append(rideIDs, match.Ride.ID)
 	}
-
-	// query := "UPDATE chairs SET is_available = :isAvailable WHERE id IN (:chairIDs)"
-	// query, params, _ := sqlx.Named(query, map[string]interface{}{
-	// 	"isAvailable": false,
-	// 	"chairIDs":    chairIDs,
-	// })
-	// query, params, _ = sqlx.In(query, params...)
-	// if _, err := db.ExecContext(ctx, query, params...); err != nil {
-	// 	writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to bulk update chairs: chairIDs: %s: %w", chairIDs, err))
-	// 	return
-	// }
 
 	query := "UPDATE rides SET chair_id = ELT(FIELD(id, :rideIDs), :chairIDs), updated_at = :updatedAt WHERE id IN (:rideIDs)"
 	query, params, _ := sqlx.Named(query, map[string]interface{}{
